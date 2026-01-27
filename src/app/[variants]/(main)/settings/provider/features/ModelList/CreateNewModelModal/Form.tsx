@@ -1,12 +1,14 @@
 import { Input } from '@lobehub/ui';
-import { Checkbox, Form, FormInstance } from 'antd';
-import { memo, useEffect } from 'react';
+import { Checkbox, Form, type FormInstance, Select } from 'antd';
+import { type AiModelType } from 'model-bank';
+import { memo, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import MaxTokenSlider from '@/components/MaxTokenSlider';
 import { useIsMobile } from '@/hooks/useIsMobile';
-import { AiModelType } from '@/types/aiModel';
-import { ChatModelCard } from '@/types/llm';
+import { type ChatModelCard } from '@/types/llm';
+
+import ExtendParamsSelect from './ExtendParamsSelect';
 
 interface ModelConfigFormProps {
   idEditable?: boolean;
@@ -23,6 +25,30 @@ const ModelConfigForm = memo<ModelConfigFormProps>(
     const [formInstance] = Form.useForm();
 
     const isMobile = useIsMobile();
+
+    const modelTypeOptions = useMemo(
+      () =>
+        (
+          [
+            'chat',
+            'embedding',
+            'tts',
+            'stt',
+            'image',
+            // 'text2video',
+            // 'text2music',
+            'realtime',
+          ] as AiModelType[]
+        ).map((value) => {
+          const label = t(`providerModels.item.modelConfig.type.options.${value}`);
+
+          return {
+            label: label !== value ? `${label} (${value})` : label,
+            value,
+          };
+        }),
+      [t],
+    );
 
     useEffect(() => {
       onFormInstanceReady(formInstance);
@@ -79,6 +105,13 @@ const ModelConfigForm = memo<ModelConfigFormProps>(
             <MaxTokenSlider />
           </Form.Item>
           <Form.Item
+            extra={t('providerModels.item.modelConfig.extendParams.extra')}
+            label={t('providerModels.item.modelConfig.extendParams.title')}
+            name={['settings', 'extendParams']}
+          >
+            <ExtendParamsSelect />
+          </Form.Item>
+          <Form.Item
             extra={t('providerModels.item.modelConfig.functionCall.extra')}
             label={t('providerModels.item.modelConfig.functionCall.title')}
             name={['abilities', 'functionCall']}
@@ -101,6 +134,41 @@ const ModelConfigForm = memo<ModelConfigFormProps>(
             valuePropName={'checked'}
           >
             <Checkbox />
+          </Form.Item>
+          <Form.Item
+            extra={t('providerModels.item.modelConfig.search.extra')}
+            label={t('providerModels.item.modelConfig.search.title')}
+            name={['abilities', 'search']}
+            valuePropName={'checked'}
+          >
+            <Checkbox />
+          </Form.Item>
+
+          <Form.Item
+            extra={t('providerModels.item.modelConfig.imageOutput.extra')}
+            label={t('providerModels.item.modelConfig.imageOutput.title')}
+            name={['abilities', 'imageOutput']}
+            valuePropName={'checked'}
+          >
+            <Checkbox />
+          </Form.Item>
+          <Form.Item
+            extra={t('providerModels.item.modelConfig.video.extra')}
+            label={t('providerModels.item.modelConfig.video.title')}
+            name={['abilities', 'video']}
+            valuePropName={'checked'}
+          >
+            <Checkbox />
+          </Form.Item>
+          <Form.Item
+            extra={t('providerModels.item.modelConfig.type.extra')}
+            label={t('providerModels.item.modelConfig.type.title')}
+            name={'type'}
+          >
+            <Select
+              options={modelTypeOptions}
+              placeholder={t('providerModels.item.modelConfig.type.placeholder')}
+            />
           </Form.Item>
           {/*<Form.Item*/}
           {/*  extra={t('providerModels.item.modelConfig.files.extra')}*/}

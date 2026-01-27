@@ -1,6 +1,7 @@
 'use client';
 
 import { Button, Form, type FormGroupItemType, type FormItemProps, Tooltip } from '@lobehub/ui';
+import { useUpdateEffect } from 'ahooks';
 import isEqual from 'fast-deep-equal';
 import { Wand2 } from 'lucide-react';
 import { memo, useState } from 'react';
@@ -29,6 +30,10 @@ const AgentMeta = memo(() => {
   const [isInbox, loadingState] = useStore((s) => [s.id === INBOX_SESSION_ID, s.loadingState]);
   const meta = useStore(selectors.currentMetaConfig, isEqual);
   const [background, setBackground] = useState(meta.backgroundColor);
+
+  useUpdateEffect(() => {
+    form.setFieldsValue(meta);
+  }, [meta]);
 
   if (isInbox) return;
 
@@ -108,7 +113,7 @@ const AgentMeta = memo(() => {
         <Button
           disabled={!hasSystemRole}
           icon={Wand2}
-          iconPosition={'end'}
+          iconPlacement={'end'}
           iconProps={{
             size: 12,
           }}
@@ -129,16 +134,7 @@ const AgentMeta = memo(() => {
   return (
     <Form
       disabled={!isAgentEditable}
-      footer={
-        <Form.SubmitFooter
-          texts={{
-            reset: t('submitFooter.reset'),
-            submit: t('settingAgent.submit'),
-            unSaved: t('submitFooter.unSaved'),
-            unSavedWarning: t('submitFooter.unSavedWarning'),
-          }}
-        />
-      }
+      footer={<Form.SubmitFooter />}
       form={form}
       initialValues={meta}
       items={[metaData]}

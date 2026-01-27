@@ -1,14 +1,13 @@
-import { Typography } from 'antd';
-import { createStyles } from 'antd-style';
+import { type ChatFileItem } from '@lobechat/types';
+import { Flexbox, Text } from '@lobehub/ui';
+import { createStaticStyles } from 'antd-style';
 import { memo } from 'react';
-import { Flexbox } from 'react-layout-kit';
 
 import FileIcon from '@/components/FileIcon';
 import { useChatStore } from '@/store/chat';
-import { ChatFileItem } from '@/types/message';
 import { formatSize } from '@/utils/format';
 
-const useStyles = createStyles(({ css, token }) => ({
+const styles = createStaticStyles(({ css, cssVar }) => ({
   container: css`
     cursor: pointer;
 
@@ -19,16 +18,15 @@ const useStyles = createStyles(({ css, token }) => ({
     padding-inline: 12px;
     border-radius: 8px;
 
-    background: ${token.colorFillTertiary};
+    background: ${cssVar.colorFillTertiary};
 
     &:hover {
-      background: ${token.colorFillSecondary};
+      background: ${cssVar.colorFillSecondary};
     }
   `,
 }));
 
 const FileItem = memo<ChatFileItem>(({ name, fileType, size, id }) => {
-  const { styles } = useStyles();
   const openFilePreview = useChatStore((s) => s.openFilePreview);
 
   return (
@@ -43,8 +41,8 @@ const FileItem = memo<ChatFileItem>(({ name, fileType, size, id }) => {
     >
       <FileIcon fileName={name} fileType={fileType} />
       <Flexbox>
-        <Typography.Text ellipsis={{ tooltip: true }}>{name}</Typography.Text>
-        <Typography.Text type={'secondary'}>{formatSize(size)}</Typography.Text>
+        <Text ellipsis={{ tooltip: true }}>{name}</Text>
+        <Text type={'secondary'}>{formatSize(size)}</Text>
       </Flexbox>
     </Flexbox>
   );

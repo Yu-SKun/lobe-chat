@@ -1,23 +1,28 @@
-import { Schema, ValidationResult } from '@cfworker/json-schema';
-import { SWRResponse } from 'swr';
-import { StateCreator } from 'zustand/vanilla';
+import { type Schema, type ValidationResult } from '@cfworker/json-schema';
+import { type SWRResponse } from 'swr';
+import { type StateCreator } from 'zustand/vanilla';
 
 import { MESSAGE_CANCEL_FLAT } from '@/const/message';
 import { useClientDataSWR } from '@/libs/swr';
 import { pluginService } from '@/services/plugin';
 import { merge } from '@/utils/merge';
 
-import { ToolStore } from '../../store';
-import { pluginStoreSelectors } from '../store/selectors';
+import { type ToolStore } from '../../store';
+import { pluginStoreSelectors } from '../oldStore/selectors';
 import { pluginSelectors } from './selectors';
 
 /**
- * 插件接口
+ * Plugin interface
  */
 export interface PluginAction {
   checkPluginsIsInstalled: (plugins: string[]) => Promise<void>;
   removeAllPlugins: () => Promise<void>;
-  updatePluginSettings: <T>(id: string, settings: Partial<T>) => Promise<void>;
+  updateInstallMcpPlugin: (id: string, value: any) => Promise<void>;
+  updatePluginSettings: <T>(
+    id: string,
+    settings: Partial<T>,
+    options?: { override?: boolean },
+  ) => Promise<void>;
   useCheckPluginsIsInstalled: (enable: boolean, plugins: string[]) => SWRResponse;
   validatePluginSettings: (identifier: string) => Promise<ValidationResult | undefined>;
 }
@@ -46,14 +51,27 @@ export const createPluginSlice: StateCreator<
     await pluginService.removeAllPlugins();
     await get().refreshPlugins();
   },
-  updatePluginSettings: async (id, settings) => {
+
+  updateInstallMcpPlugin: async (id, value) => {
+    const installedPlugin = pluginSelectors.getInstalledPluginById(id)(get());
+
+    if (!installedPlugin) return;
+
+    await pluginService.updatePlugin(id, {
+      customParams: { mcp: merge(installedPlugin.customParams?.mcp, value) },
+    });
+
+    await get().refreshPlugins();
+  },
+
+  updatePluginSettings: async (id, settings, { override } = {}) => {
     const signal = get().updatePluginSettingsSignal;
     if (signal) signal.abort(MESSAGE_CANCEL_FLAT);
 
     const newSignal = new AbortController();
 
     const previousSettings = pluginSelectors.getPluginSettingsById(id)(get());
-    const nextSettings = merge(previousSettings, settings);
+    const nextSettings = override ? settings : merge(previousSettings, settings);
 
     set({ updatePluginSettingsSignal: newSignal }, false, 'create new Signal');
     await pluginService.updatePluginSettings(id, nextSettings, newSignal.signal);

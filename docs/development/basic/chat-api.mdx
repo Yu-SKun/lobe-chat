@@ -1,3 +1,15 @@
+---
+title: Lobe Chat API Client-Server Interaction Logic
+description: >-
+  Explore the client-server interaction logic of Lobe Chat API, including event
+  sequences.
+tags:
+  - Lobe Chat API
+  - Client-Server Interaction
+  - Event Sequences
+  - API Logic
+---
+
 # Lobe Chat API Client-Server Interaction Logic
 
 This document explains the implementation logic of Lobe Chat API in client-server interactions, including event sequences and core components involved.
@@ -223,7 +235,6 @@ AgentRuntime is a core abstraction layer in Lobe Chat that encapsulates a unifie
      chat(payload: ChatStreamPayload, options?: ChatCompetitionOptions): Promise<Response>;
      embeddings?(payload: EmbeddingsPayload, options?: EmbeddingsOptions): Promise<Embeddings[]>;
      models?(): Promise<any>;
-     textToImage?: (payload: TextToImagePayload) => Promise<string[]>;
      textToSpeech?: (
        payload: TextToSpeechPayload,
        options?: TextToSpeechOptions,
@@ -233,8 +244,7 @@ AgentRuntime is a core abstraction layer in Lobe Chat that encapsulates a unifie
 
    **Adapter Implementation Examples**:
 
-   1. **OpenRouter Adapter**:
-      OpenRouter is a unified API that allows access to AI models from multiple providers. Lobe Chat implements support for OpenRouter through an adapter:
+   1. **OpenRouter Adapter**: OpenRouter is a unified API that allows access to AI models from multiple providers. Lobe Chat implements support for OpenRouter through an adapter:
 
       ```ts
       // OpenRouter adapter implementation
@@ -249,7 +259,7 @@ AgentRuntime is a core abstraction layer in Lobe Chat that encapsulates a unifie
             baseURL: OPENROUTER_BASE_URL,
             defaultHeaders: {
               'HTTP-Referer': 'https://github.com/lobehub/lobe-chat',
-              'X-Title': 'LobeChat',
+              'X-Title': 'LobeHub',
             },
           });
           this.baseURL = OPENROUTER_BASE_URL;
@@ -272,8 +282,7 @@ AgentRuntime is a core abstraction layer in Lobe Chat that encapsulates a unifie
       }
       ```
 
-   2. **Google Gemini Adapter**:
-      Gemini is Google's large language model. Lobe Chat supports Gemini series models through a dedicated adapter:
+   2. **Google Gemini Adapter**: Gemini is Google's large language model. Lobe Chat supports Gemini series models through a dedicated adapter:
 
       ```ts
       import { GoogleGenerativeAI } from '@google/generative-ai';

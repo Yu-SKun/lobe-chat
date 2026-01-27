@@ -1,38 +1,44 @@
 import { ModelIcon } from '@lobehub/icons';
-import { ActionIcon, Tag, copyToClipboard } from '@lobehub/ui';
-import { App, Switch, Typography } from 'antd';
-import { createStyles, useTheme } from 'antd-style';
+import { ActionIcon, Flexbox, Tag, Text, copyToClipboard } from '@lobehub/ui';
+import { App, Switch } from 'antd';
+import { createStaticStyles, cssVar } from 'antd-style';
 import { LucidePencil, TrashIcon } from 'lucide-react';
-import { memo, use, useState } from 'react';
+import { AiModelSourceEnum, type AiProviderModelListItem } from 'model-bank';
+import React, { memo, use, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Flexbox } from 'react-layout-kit';
 
 import { ModelInfoTags } from '@/components/ModelSelect';
+import NewModelBadge from '@/components/ModelSelect/NewModelBadge';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { aiModelSelectors, useAiInfraStore } from '@/store/aiInfra';
-import { AiModelSourceEnum, AiProviderModelListItem, ChatModelPricing } from '@/types/aiModel';
 import { formatPriceByCurrency } from '@/utils/format';
+import {
+  getAudioInputUnitRate,
+  getTextInputUnitRate,
+  getTextOutputUnitRate,
+} from '@/utils/pricing';
 
 import ModelConfigModal from './ModelConfigModal';
 import { ProviderSettingsContext } from './ProviderSettingsContext';
 
-export const useStyles = createStyles(({ css, token, cx }) => {
-  const config = css`
-    opacity: 0;
-    transition: all 100ms ease-in-out;
-  `;
-
+const styles = createStaticStyles(({ css, cx }) => {
   return {
-    config,
+    config: cx(
+      'model-item-config',
+      css`
+        opacity: 0;
+        transition: all 100ms ease-in-out;
+      `,
+    ),
     container: css`
       position: relative;
-      border-radius: ${token.borderRadiusLG}px;
+      border-radius: ${cssVar.borderRadiusLG}px;
       transition: all 200ms ease-in-out;
 
       &:hover {
-        background-color: ${token.colorFillTertiary};
+        background-color: ${cssVar.colorFillTertiary};
 
-        .${cx(config)} {
+        .model-item-config {
           opacity: 1;
         }
       }
@@ -54,7 +60,6 @@ interface ModelItemProps extends AiProviderModelListItem {
   enabled: boolean;
   id: string;
   isAzure?: boolean;
-  pricing?: ChatModelPricing;
   releasedAt?: string;
   removed?: boolean;
 }
@@ -72,9 +77,7 @@ const ModelItem = memo<ModelItemProps>(
     abilities,
     type,
   }) => {
-    const { styles } = useStyles();
     const { t } = useTranslation(['modelProvider', 'components', 'models', 'common']);
-    const theme = useTheme();
     const { modelEditable } = use(ProviderSettingsContext);
 
     const [activeAiProvider, isModelLoading, toggleModelEnabled, removeAiModel] = useAiInfraStore(
@@ -94,38 +97,43 @@ const ModelItem = memo<ModelItemProps>(
 
       switch (type) {
         case 'chat': {
+          const inputRate = getTextInputUnitRate(pricing);
+          const outputRate = getTextOutputUnitRate(pricing);
           return [
-            typeof pricing.input === 'number' &&
+            typeof inputRate === 'number' &&
               t('providerModels.item.pricing.inputTokens', {
-                amount: formatPriceByCurrency(pricing.input, pricing?.currency),
+                amount: formatPriceByCurrency(inputRate, pricing?.currency),
               }),
-            typeof pricing.output === 'number' &&
+            typeof outputRate === 'number' &&
               t('providerModels.item.pricing.outputTokens', {
-                amount: formatPriceByCurrency(pricing.output, pricing?.currency),
+                amount: formatPriceByCurrency(outputRate, pricing?.currency),
               }),
           ].filter(Boolean) as string[];
         }
         case 'embedding': {
+          const inputRate = getTextInputUnitRate(pricing);
           return [
-            typeof pricing.input === 'number' &&
+            typeof inputRate === 'number' &&
               t('providerModels.item.pricing.inputTokens', {
-                amount: formatPriceByCurrency(pricing.input, pricing?.currency),
+                amount: formatPriceByCurrency(inputRate, pricing?.currency),
               }),
           ].filter(Boolean) as string[];
         }
         case 'tts': {
+          const inputRate = getAudioInputUnitRate(pricing);
           return [
-            typeof pricing.input === 'number' &&
+            typeof inputRate === 'number' &&
               t('providerModels.item.pricing.inputCharts', {
-                amount: formatPriceByCurrency(pricing.input, pricing?.currency),
+                amount: formatPriceByCurrency(inputRate, pricing?.currency),
               }),
           ].filter(Boolean) as string[];
         }
         case 'stt': {
+          const inputRate = getAudioInputUnitRate(pricing);
           return [
-            typeof pricing.input === 'number' &&
+            typeof inputRate === 'number' &&
               t('providerModels.item.pricing.inputMinutes', {
-                amount: formatPriceByCurrency(pricing.input, pricing?.currency),
+                amount: formatPriceByCurrency(inputRate, pricing?.currency),
               }),
           ].filter(Boolean) as string[];
         }
@@ -153,6 +161,65 @@ const ModelItem = memo<ModelItemProps>(
 
     const isMobile = useIsMobile();
 
+    const NewTag = <NewModelBadge releasedAt={releasedAt} />;
+
+    const ModelIdTag = (
+      <Tag onClick={copyModelId} style={{ cursor: 'pointer', marginRight: 0 }}>
+        {id}
+      </Tag>
+    );
+
+    const EnableSwitch = (
+      <Switch
+        checked={checked}
+        loading={isModelLoading}
+        onChange={async (e) => {
+          setChecked(e);
+          await toggleModelEnabled({ enabled: e, id, source, type });
+        }}
+        size={'small'}
+      />
+    );
+
+    const Actions =
+      modelEditable &&
+      ((style?: React.CSSProperties) => (
+        <Flexbox className={styles.config} horizontal style={style}>
+          <ActionIcon
+            icon={LucidePencil}
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowConfig(true);
+            }}
+            size={'small'}
+            title={t('providerModels.item.config')}
+          />
+          {source !== AiModelSourceEnum.Builtin && (
+            <ActionIcon
+              icon={TrashIcon}
+              onClick={() => {
+                modal.confirm({
+                  centered: true,
+                  okButtonProps: {
+                    danger: true,
+                    type: 'primary',
+                  },
+                  onOk: async () => {
+                    await removeAiModel(id, activeAiProvider!);
+                    message.success(t('providerModels.item.delete.success'));
+                  },
+                  title: t('providerModels.item.delete.confirm', {
+                    displayName: displayName || id,
+                  }),
+                });
+              }}
+              size={'small'}
+              title={t('providerModels.item.delete.title')}
+            />
+          )}
+        </Flexbox>
+      ));
+
     const dom = isMobile ? (
       <Flexbox
         align={'center'}
@@ -173,71 +240,17 @@ const ModelItem = memo<ModelItemProps>(
                   {...abilities}
                   contextWindowTokens={contextWindowTokens}
                 />
-                {/*{removed && (*/}
-                {/*  <Tooltip*/}
-                {/*    overlayStyle={{ maxWidth: 300 }}*/}
-                {/*    placement={'top'}*/}
-                {/*    style={{ pointerEvents: 'none' }}*/}
-                {/*    title={t('ModelSelect.removed')}*/}
-                {/*  >*/}
-                {/*    <ActionIcon icon={Recycle} style={{ color: theme.colorWarning }} />*/}
-                {/*  </Tooltip>*/}
-                {/*)}*/}
               </Flexbox>
             </Flexbox>
             <div>
-              <Tag onClick={copyModelId} style={{ cursor: 'pointer', marginRight: 0 }}>
-                {id}
-              </Tag>
+              {ModelIdTag}
+              {NewTag}
             </div>
           </Flexbox>
         </Flexbox>
         <Flexbox align={'center'} gap={4} horizontal>
-          {modelEditable && (
-            <Flexbox className={styles.config} horizontal style={{ opacity: 1 }}>
-              <ActionIcon
-                icon={LucidePencil}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowConfig(true);
-                }}
-                size={'small'}
-                title={t('providerModels.item.config')}
-              />
-              {source !== AiModelSourceEnum.Builtin && (
-                <ActionIcon
-                  icon={TrashIcon}
-                  onClick={() => {
-                    modal.confirm({
-                      centered: true,
-                      okButtonProps: {
-                        danger: true,
-                        type: 'primary',
-                      },
-                      onOk: async () => {
-                        await removeAiModel(id, activeAiProvider!);
-                        message.success(t('providerModels.item.delete.success'));
-                      },
-                      title: t('providerModels.item.delete.confirm', {
-                        displayName: displayName || id,
-                      }),
-                    });
-                  }}
-                  size={'small'}
-                  title={t('providerModels.item.delete.title')}
-                />
-              )}
-            </Flexbox>
-          )}
-          <Switch
-            checked={checked}
-            loading={isModelLoading}
-            onChange={async (e) => {
-              setChecked(e);
-              await toggleModelEnabled({ enabled: e, id, source });
-            }}
-            size={'small'}
-          />
+          {Actions && Actions({ opacity: 1 })}
+          {EnableSwitch}
         </Flexbox>
       </Flexbox>
     ) : (
@@ -255,53 +268,15 @@ const ModelItem = memo<ModelItemProps>(
           <Flexbox flex={1} gap={2} style={{ minWidth: 0 }}>
             <Flexbox align={'center'} gap={8} horizontal>
               {displayName || id}
-              <Tag onClick={copyModelId} style={{ cursor: 'pointer', marginRight: 0 }}>
-                {id}
-              </Tag>
-              {modelEditable && (
-                <Flexbox className={styles.config} horizontal>
-                  <ActionIcon
-                    icon={LucidePencil}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowConfig(true);
-                    }}
-                    size={'small'}
-                    title={t('providerModels.item.config')}
-                  />
-                  {source !== AiModelSourceEnum.Builtin && (
-                    <ActionIcon
-                      icon={TrashIcon}
-                      onClick={() => {
-                        modal.confirm({
-                          centered: true,
-                          okButtonProps: {
-                            danger: true,
-                            type: 'primary',
-                          },
-                          onOk: async () => {
-                            await removeAiModel(id, activeAiProvider!);
-                            message.success(t('providerModels.item.delete.success'));
-                          },
-                          title: t('providerModels.item.delete.confirm', {
-                            displayName: displayName || id,
-                          }),
-                        });
-                      }}
-                      size={'small'}
-                      title={t('providerModels.item.delete.title')}
-                    />
-                  )}
-                </Flexbox>
-              )}
+              {ModelIdTag}
+              {NewTag}
+              {Actions && Actions()}
             </Flexbox>
             <Flexbox align={'baseline'} gap={8} horizontal>
               {content.length > 0 && (
-                <Typography.Text
-                  style={{ color: theme.colorTextSecondary, fontSize: 12, marginBottom: 0 }}
-                >
+                <Text style={{ color: cssVar.colorTextSecondary, fontSize: 12, marginBottom: 0 }}>
                   {content.join(' · ')}
-                </Typography.Text>
+                </Text>
               )}
             </Flexbox>
           </Flexbox>
@@ -322,15 +297,7 @@ const ModelItem = memo<ModelItemProps>(
           {/*    <ActionIcon icon={Recycle} style={{ color: theme.colorWarning }} />*/}
           {/*  </Tooltip>*/}
           {/*)}*/}
-          <Switch
-            checked={checked}
-            loading={isModelLoading}
-            onChange={async (e) => {
-              setChecked(e);
-              await toggleModelEnabled({ enabled: e, id, source });
-            }}
-            size={'small'}
-          />
+          {EnableSwitch}
         </Flexbox>
       </Flexbox>
     );

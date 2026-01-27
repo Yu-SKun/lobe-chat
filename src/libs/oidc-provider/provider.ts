@@ -1,53 +1,21 @@
+import { type LobeChatDatabase } from '@lobechat/database';
 import debug from 'debug';
-import Provider, { Configuration, KoaContextWithOIDC } from 'oidc-provider';
+import Provider, { type Configuration, type KoaContextWithOIDC, errors } from 'oidc-provider';
 import urlJoin from 'url-join';
 
-import { appEnv } from '@/config/app';
 import { serverDBEnv } from '@/config/db';
 import { UserModel } from '@/database/models/user';
-import { LobeChatDatabase } from '@/database/type';
-import { oidcEnv } from '@/envs/oidc';
+import { appEnv } from '@/envs/app';
+import { getJWKS } from '@/libs/oidc-provider/jwt';
+import { normalizeLocale } from '@/locales/resources';
 
 import { DrizzleAdapter } from './adapter';
 import { defaultClaims, defaultClients, defaultScopes } from './config';
 import { createInteractionPolicy } from './interaction-policy';
 
-const logProvider = debug('lobe-oidc:provider'); // <--- 添加 provider 日志实例
+const logProvider = debug('lobe-oidc:provider');
 
-/**
- * 从环境变量中获取 JWKS
- * 该 JWKS 是一个包含 RS256 私钥的 JSON 对象
- */
-const getJWKS = (): object => {
-  try {
-    const jwksString = oidcEnv.OIDC_JWKS_KEY;
-
-    if (!jwksString) {
-      throw new Error(
-        'OIDC_JWKS_KEY 环境变量是必需的。请使用 scripts/generate-oidc-jwk.mjs 生成 JWKS。',
-      );
-    }
-
-    // 尝试解析 JWKS JSON 字符串
-    const jwks = JSON.parse(jwksString);
-
-    // 检查 JWKS 格式是否正确
-    if (!jwks.keys || !Array.isArray(jwks.keys) || jwks.keys.length === 0) {
-      throw new Error('JWKS 格式无效: 缺少或为空的 keys 数组');
-    }
-
-    // 检查是否有 RS256 算法的密钥
-    const hasRS256Key = jwks.keys.some((key: any) => key.alg === 'RS256' && key.kty === 'RSA');
-    if (!hasRS256Key) {
-      throw new Error('JWKS 中没有找到 RS256 算法的 RSA 密钥');
-    }
-
-    return jwks;
-  } catch (error) {
-    console.error('解析 JWKS 失败:', error);
-    throw new Error(`OIDC_JWKS_KEY 解析错误: ${(error as Error).message}`);
-  }
-};
+export const API_AUDIENCE = 'urn:lobehub:chat';
 
 /**
  * 获取 Cookie 密钥，使用 KEY_VAULTS_SECRET
@@ -109,6 +77,9 @@ export const createOIDCProvider = async (db: LobeChatDatabase): Promise<Provider
     // 1. 客户端配置
     clients: defaultClients,
 
+    // 新增：确保 ID Token 包含所有 scope 对应的 claims，而不仅仅是 openid scope
+    conformIdTokenClaims: false,
+
     // 7. Cookie 配置
     cookies: {
       keys: cookieKeys,
@@ -123,7 +94,27 @@ export const createOIDCProvider = async (db: LobeChatDatabase): Promise<Provider
       devInteractions: { enabled: false },
       deviceFlow: { enabled: false },
       introspection: { enabled: true },
-      resourceIndicators: { enabled: false },
+      resourceIndicators: {
+        defaultResource: () => API_AUDIENCE,
+        enabled: true,
+
+        getResourceServerInfo: (ctx, resourceIndicator) => {
+          logProvider('getResourceServerInfo called with indicator: %s', resourceIndicator); // <-- 添加这行日志
+          if (resourceIndicator === API_AUDIENCE) {
+            logProvider('Indicator matches API_AUDIENCE, returning JWT config.'); // <-- 添加这行日志
+            return {
+              accessTokenFormat: 'jwt',
+              audience: API_AUDIENCE,
+              scope: ctx.oidc.client?.scope || 'read',
+            };
+          }
+
+          logProvider('Indicator does not match API_AUDIENCE, throwing InvalidTarget.'); // <-- 添加这行日志
+          throw new errors.InvalidTarget();
+        },
+        // 当客户端使用刷新令牌请求新的访问令牌但没有指定资源时，授权服务器会检查原始授权中包含的所有资源，并将这些资源用于新的访问令牌。这提供了一种便捷的方式来维持授权一致性，而不需要客户端在每次刷新时重新指定所有资源
+        useGrantedResource: () => true,
+      },
       revocation: { enabled: true },
       rpInitiatedLogout: { enabled: true },
       userinfo: { enabled: true },
@@ -142,6 +133,10 @@ export const createOIDCProvider = async (db: LobeChatDatabase): Promise<Provider
       // 确定要查找的账户 ID
       // 优先级: 1. externalAccountId 2. ctx.oidc.session?.accountId 3. 传入的 id
       const accountIdToFind = externalAccountId || ctx.oidc?.session?.accountId || id;
+
+      const clientId = ctx.oidc?.client?.clientId;
+
+      logProvider('OIDC request client id: %s', clientId);
 
       logProvider(
         'Attempting to find account with ID: %s (source: %s)',
@@ -211,7 +206,25 @@ export const createOIDCProvider = async (db: LobeChatDatabase): Promise<Provider
         // ---> 添加日志 <---
         logProvider('interactions.url function called');
         logProvider('Interaction details: %O', interaction);
-        const interactionUrl = `/oauth/consent/${interaction.uid}`;
+
+        // 读取 OIDC 请求中的 ui_locales 参数（空格分隔的语言优先级）
+        // https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest
+        const uiLocalesRaw = (interaction.params?.ui_locales || ctx.oidc?.params?.ui_locales) as
+          | string
+          | undefined;
+
+        let query = '';
+        if (uiLocalesRaw) {
+          // 取第一个优先语言，规范化到站点支持的标签
+          const first = uiLocalesRaw.split(/[\s,]+/).find(Boolean);
+          const hl = normalizeLocale(first);
+          query = `?hl=${encodeURIComponent(hl)}`;
+          logProvider('Detected ui_locales=%s -> using hl=%s', uiLocalesRaw, hl);
+        } else {
+          logProvider('No ui_locales provided in authorization request');
+        }
+
+        const interactionUrl = `/oauth/consent/${interaction.uid}${query}`;
         logProvider('Generated interaction URL: %s', interactionUrl);
         // ---> 添加日志结束 <---
         return interactionUrl;
@@ -256,7 +269,7 @@ export const createOIDCProvider = async (db: LobeChatDatabase): Promise<Provider
 
     // 8. 令牌有效期
     ttl: {
-      AccessToken: 3600, // 1 hour in seconds
+      AccessToken: 7 * 24 * 3600, // 7 days
       AuthorizationCode: 600, // 10 minutes
       DeviceCode: 600, // 10 minutes (if enabled)
 

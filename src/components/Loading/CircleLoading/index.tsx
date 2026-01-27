@@ -1,10 +1,8 @@
 'use client';
 
-import { Icon } from '@lobehub/ui';
-import { Typography } from 'antd';
+import { Center, Flexbox, Icon, Text } from '@lobehub/ui';
 import { LoaderCircle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { Center, Flexbox } from 'react-layout-kit';
 
 export default () => {
   const { t } = useTranslation('common');
@@ -14,9 +12,9 @@ export default () => {
         <div>
           <Icon icon={LoaderCircle} size={'large'} spin />
         </div>
-        <Typography.Text style={{ letterSpacing: '0.1em' }} type={'secondary'}>
+        <Text style={{ letterSpacing: '0.1em' }} type={'secondary'}>
           {t('loading')}
-        </Typography.Text>
+        </Text>
       </Flexbox>
     </Center>
   );

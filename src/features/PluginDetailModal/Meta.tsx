@@ -1,8 +1,6 @@
-import { Block } from '@lobehub/ui';
-import { Typography } from 'antd';
+import { Block, Flexbox, Text } from '@lobehub/ui';
 import isEqual from 'fast-deep-equal';
 import { memo } from 'react';
-import { Flexbox } from 'react-layout-kit';
 
 import PluginAvatar from '@/features/PluginAvatar';
 import { pluginHelpers, useToolStore } from '@/store/tool';
@@ -18,9 +16,9 @@ const Meta = memo<{
       <PluginAvatar identifier={id} size={40} />
       <Flexbox gap={2}>
         <div>{pluginHelpers.getPluginTitle(pluginMeta)}</div>
-        <Typography.Text style={{ fontSize: 12 }} type={'secondary'}>
+        <Text style={{ fontSize: 12 }} type={'secondary'}>
           {pluginHelpers.getPluginDesc(pluginMeta)}
-        </Typography.Text>
+        </Text>
       </Flexbox>
     </Block>
   );

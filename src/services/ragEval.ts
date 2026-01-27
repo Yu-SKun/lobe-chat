@@ -1,13 +1,14 @@
+import {
+  type CreateNewEvalDatasets,
+  type CreateNewEvalEvaluation,
+  type EvalDatasetRecord,
+  type RAGEvalDataSetItem,
+  type RAGEvalEvaluationItem,
+  type insertEvalDatasetsSchema,
+} from '@lobechat/types';
+
 import { lambdaClient } from '@/libs/trpc/client';
 import { uploadService } from '@/services/upload';
-import {
-  CreateNewEvalDatasets,
-  CreateNewEvalEvaluation,
-  EvalDatasetRecord,
-  RAGEvalDataSetItem,
-  RAGEvalEvaluationItem,
-  insertEvalDatasetsSchema,
-} from '@/types/eval';
 
 class RAGEvalService {
   // Dataset

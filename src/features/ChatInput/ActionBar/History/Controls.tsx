@@ -1,11 +1,14 @@
 import { Form, type FormItemProps, SliderWithInput } from '@lobehub/ui';
-import { Switch } from 'antd';
-import { debounce } from 'lodash-es';
-import { memo } from 'react';
+import { Form as AntdForm, Switch } from 'antd';
+import { debounce } from 'es-toolkit/compat';
+import { memo, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useAgentStore } from '@/store/agent';
-import { agentChatConfigSelectors } from '@/store/agent/selectors';
+import { chatConfigByIdSelectors } from '@/store/agent/selectors';
+
+import { useAgentId } from '../../hooks/useAgentId';
+import { useUpdateAgentConfig } from '../../hooks/useUpdateAgentConfig';
 
 interface ControlsProps {
   setUpdating: (updating: boolean) => void;
@@ -13,14 +16,22 @@ interface ControlsProps {
 }
 const Controls = memo<ControlsProps>(({ updating, setUpdating }) => {
   const { t } = useTranslation('setting');
+  const [form] = AntdForm.useForm();
+  const agentId = useAgentId();
+  const { updateAgentChatConfig } = useUpdateAgentConfig();
 
-  const [historyCount, enableHistoryCount, updateAgentConfig] = useAgentStore((s) => {
-    return [
-      agentChatConfigSelectors.historyCount(s),
-      agentChatConfigSelectors.enableHistoryCount(s),
-      s.updateAgentChatConfig,
-    ];
-  });
+  const [historyCount, enableHistoryCount] = useAgentStore((s) => [
+    chatConfigByIdSelectors.getHistoryCountById(agentId)(s),
+    chatConfigByIdSelectors.getEnableHistoryCountById(agentId)(s),
+  ]);
+
+  // Sync external store updates to the form without remounting to keep Switch animation
+  useEffect(() => {
+    form?.setFieldsValue({
+      enableHistoryCount,
+      historyCount,
+    });
+  }, [enableHistoryCount, historyCount, form]);
 
   let items: FormItemProps[] = [
     {
@@ -40,6 +51,12 @@ const Controls = memo<ControlsProps>(({ updating, setUpdating }) => {
           size={'small'}
           step={1}
           style={{ marginBlock: 8, paddingLeft: 4 }}
+          styles={{
+            input: {
+              maxWidth: 64,
+            },
+          }}
+          unlimitedInput={true}
         />
       ),
       name: 'historyCount',
@@ -49,6 +66,7 @@ const Controls = memo<ControlsProps>(({ updating, setUpdating }) => {
 
   return (
     <Form
+      form={form}
       initialValues={{
         enableHistoryCount,
         historyCount,
@@ -57,7 +75,7 @@ const Controls = memo<ControlsProps>(({ updating, setUpdating }) => {
       itemsType={'flat'}
       onValuesChange={debounce(async (values) => {
         setUpdating(true);
-        await updateAgentConfig(values);
+        await updateAgentChatConfig(values);
         setUpdating(false);
       }, 500)}
       styles={{

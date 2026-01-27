@@ -1,12 +1,10 @@
 'use client';
 
-import { ActionIcon } from '@lobehub/ui';
-import { Typography } from 'antd';
+import { ActionIcon, Flexbox, Text, TooltipGroup } from '@lobehub/ui';
 import isEqual from 'fast-deep-equal';
 import { ToggleRightIcon } from 'lucide-react';
 import { memo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Flexbox } from 'react-layout-kit';
 
 import { aiModelSelectors, useAiInfraStore } from '@/store/aiInfra';
 
@@ -19,16 +17,16 @@ const SearchResult = memo(() => {
   const batchToggleAiModels = useAiInfraStore((s) => s.batchToggleAiModels);
 
   const filteredModels = useAiInfraStore(aiModelSelectors.filteredAiProviderModelList, isEqual);
-  console.log('filteredModels:', filteredModels);
+
   const [batchLoading, setBatchLoading] = useState(false);
 
   const isEmpty = filteredModels.length === 0;
   return (
     <>
       <Flexbox horizontal justify={'space-between'}>
-        <Typography.Text style={{ fontSize: 12, marginTop: 8 }} type={'secondary'}>
+        <Text style={{ fontSize: 12, marginTop: 8 }} type={'secondary'}>
           {t('providerModels.list.searchResult', { count: filteredModels.length })}
-        </Typography.Text>
+        </Text>
         {!isEmpty && (
           <Flexbox horizontal>
             <ActionIcon
@@ -54,11 +52,13 @@ const SearchResult = memo(() => {
           {t('providerModels.searchNotFound')}
         </Flexbox>
       ) : (
-        <Flexbox gap={4}>
-          {filteredModels.map((item) => (
-            <ModelItem {...item} key={`${item.id}-${item.enabled}`} />
-          ))}
-        </Flexbox>
+        <TooltipGroup>
+          <Flexbox gap={4}>
+            {filteredModels.map((item) => (
+              <ModelItem {...item} key={`${item.id}-${item.enabled}`} />
+            ))}
+          </Flexbox>
+        </TooltipGroup>
       )}
     </>
   );

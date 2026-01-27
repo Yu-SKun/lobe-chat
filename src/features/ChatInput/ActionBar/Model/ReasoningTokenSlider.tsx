@@ -1,7 +1,6 @@
-import { InputNumber } from '@lobehub/ui';
+import { Flexbox, InputNumber } from '@lobehub/ui';
 import { Slider } from 'antd';
 import { memo, useMemo } from 'react';
-import { Flexbox } from 'react-layout-kit';
 import useMergeState from 'use-merge-value';
 
 const Kibi = 1024;
@@ -51,6 +50,16 @@ const ReasoningTokenSlider = memo<MaxTokenSliderProps>(({ value, onChange, defau
     };
   }, []);
 
+  const step = useMemo(() => {
+    const current = token ?? 0;
+
+    if (current <= Kibi) return 128;
+
+    if (current < 8 * Kibi) return Kibi;
+
+    return 4 * Kibi;
+  }, [token]);
+
   return (
     <Flexbox align={'center'} gap={12} horizontal paddingInline={'4px 0'}>
       <Flexbox flex={1}>
@@ -73,8 +82,8 @@ const ReasoningTokenSlider = memo<MaxTokenSliderProps>(({ value, onChange, defau
             if (!e && e !== 0) return;
             updateWithRealValue(e as number);
           }}
-          step={4 * Kibi}
-          style={{ width: 60 }}
+          step={step}
+          style={{ width: 80 }}
           value={token}
         />
       </div>

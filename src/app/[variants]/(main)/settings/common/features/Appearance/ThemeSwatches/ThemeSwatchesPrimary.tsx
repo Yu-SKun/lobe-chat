@@ -1,11 +1,13 @@
-import { ColorSwatches, PrimaryColors, findCustomThemeName, primaryColors } from '@lobehub/ui';
+import { ColorSwatches, type PrimaryColors, findCustomThemeName, primaryColors } from '@lobehub/ui';
 import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 
-const ThemeSwatchesPrimary = memo<{
+interface IProps {
   onChange?: (v: PrimaryColors) => void;
   value?: PrimaryColors;
-}>(({ onChange, value }) => {
+}
+
+const ThemeSwatchesPrimary = memo<IProps>(({ onChange, value }) => {
   const { t } = useTranslation('color');
 
   const handleSelect = (v: any) => {

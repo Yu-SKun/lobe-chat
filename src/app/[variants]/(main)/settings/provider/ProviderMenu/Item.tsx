@@ -1,78 +1,72 @@
+import { BRANDING_PROVIDER } from '@lobechat/business-const';
 import { ProviderIcon } from '@lobehub/icons';
-import { Avatar } from '@lobehub/ui';
+import { Avatar, Center } from '@lobehub/ui';
 import { Badge } from 'antd';
-import { createStyles } from 'antd-style';
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { memo } from 'react';
-import { Center, Flexbox } from 'react-layout-kit';
+import { memo, useMemo } from 'react';
+import { useLocation } from 'react-router-dom';
 
-import { AiProviderListItem, AiProviderSourceEnum } from '@/types/aiProvider';
+import { ProductLogo } from '@/components/Branding/ProductLogo';
+import { isCustomBranding } from '@/const/version';
+import NavItem from '@/features/NavPanel/components/NavItem';
+import { type AiProviderListItem, AiProviderSourceEnum } from '@/types/aiProvider';
 
-export const useStyles = createStyles(({ css, token }) => ({
-  active: css`
-    background: ${token.colorFillSecondary};
-  `,
-  container: css`
-    cursor: pointer;
+interface ProviderItemProps extends AiProviderListItem {
+  onClick: (id: string) => void;
+}
 
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    justify-content: space-between;
+const ProviderItem = memo<ProviderItemProps>(
+  ({ id, name, source, enabled, logo, onClick = () => {} }) => {
+    const location = useLocation();
 
-    padding-block: 8px;
-    padding-inline: 12px;
-    border-radius: ${token.borderRadius}px;
+    // Extract providerId from pathname: /settings/provider/xxx -> xxx
+    const activeKey = useMemo(() => {
+      const pathParts = location.pathname.split('/');
+      // pathname is like /settings/provider/all or /settings/provider/openai
+      if (pathParts.length >= 4 && pathParts[2] === 'provider') {
+        return pathParts[3];
+      }
+      return null;
+    }, [location.pathname]);
 
-    color: inherit;
+    const isCustom = source === AiProviderSourceEnum.Custom;
+    const providerIcon =
+      isCustom && logo ? (
+        <Avatar
+          alt={name || id}
+          avatar={logo}
+          shape={'square'}
+          size={22}
+          style={{ borderRadius: 4 }}
+        />
+      ) : isCustomBranding && id === BRANDING_PROVIDER ? (
+        <ProductLogo size={24} type={'flat'} />
+      ) : (
+        <ProviderIcon
+          provider={id}
+          shape={'square'}
+          size={22}
+          style={{ borderRadius: 4 }}
+          type={'avatar'}
+        />
+      );
 
-    transition: all 0.2s ease-in-out;
-
-    &:hover {
-      color: inherit;
-      background-color: ${token.colorFill};
-    }
-  `,
-}));
-
-const ProviderItem = memo<AiProviderListItem>(({ id, name, source, enabled, logo }) => {
-  const { styles, cx } = useStyles();
-  const pathname = usePathname();
-
-  const activeKey = pathname.split('/').pop();
-
-  const isCustom = source === AiProviderSourceEnum.Custom;
-  return (
-    <Link
-      className={cx(styles.container, activeKey === id && styles.active)}
-      href={`/settings/provider/${id}`}
-    >
-      <Flexbox gap={8} horizontal>
-        {isCustom && logo ? (
-          <Avatar
-            alt={name || id}
-            avatar={logo}
-            shape={'square'}
-            size={24}
-            style={{ borderRadius: 6 }}
-          />
-        ) : (
-          <ProviderIcon provider={id} size={24} style={{ borderRadius: 6 }} type={'avatar'} />
-        )}
-        {name}
-      </Flexbox>
-      <Flexbox horizontal>
-        {enabled && (
-          <Center width={24}>
-            <Badge status="success" />
-          </Center>
-        )}
-        {/* cloud slot */}
-
-        {/* cloud slot */}
-      </Flexbox>
-    </Link>
-  );
-});
+    return (
+      <NavItem
+        active={activeKey === id}
+        extra={
+          enabled ? (
+            <Center width={24}>
+              <Badge status="success" />
+            </Center>
+          ) : undefined
+        }
+        icon={() => providerIcon}
+        onClick={() => {
+          onClick(id);
+        }}
+        title={name}
+      />
+    );
+  },
+);
 export default ProviderItem;

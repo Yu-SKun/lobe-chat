@@ -1,6 +1,6 @@
 import { DEFAULT_LANG } from '@/const/locale';
 
-import resources from './default';
+import type resources from './default';
 
 export const locales = [
   'ar',
@@ -18,13 +18,16 @@ export const locales = [
   'zh-TW',
   'vi-VN',
   'fa-IR',
+  'it-IT',
+  'pl-PL',
+  'nl-NL',
 ] as const;
 
 export type DefaultResources = typeof resources;
 export type NS = keyof DefaultResources;
 export type Locales = (typeof locales)[number];
 
-export const normalizeLocale = (locale?: string): string => {
+export const normalizeLocale = (locale?: string): Locales => {
   if (!locale) return DEFAULT_LANG;
 
   if (locale.startsWith('ar')) return 'ar';

@@ -16,9 +16,14 @@ describe('settingsSelectors', () => {
       const result = userGeneralSettingsSelectors.config(s as UserStore);
 
       expect(result).toEqual({
+        animationMode: 'agile',
         fontSize: 12,
         highlighterTheme: 'lobe-theme',
+        isDevMode: false,
+        isLiteMode: false,
         mermaidTheme: 'lobe-theme',
+        telemetry: true,
+        transitionMode: 'fadeIn',
       });
     });
   });

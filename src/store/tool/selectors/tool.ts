@@ -1,82 +1,37 @@
-import { LobeChatPluginManifest } from '@lobehub/chat-plugin-sdk';
+import { type RenderDisplayControl } from '@lobechat/types';
+import type { LobeChatPluginManifest } from '@lobehub/chat-plugin-sdk';
 
-import { pluginPrompts } from '@/prompts/plugin';
-import { MetaData } from '@/types/meta';
-import { ChatCompletionTool } from '@/types/openai/chat';
-import { LobeToolMeta } from '@/types/tool/tool';
-import { globalAgentContextManager } from '@/utils/client/GlobalAgentContextManager';
-import { hydrationPrompt } from '@/utils/promptTemplate';
-import { genToolCallingName } from '@/utils/toolCall';
-import { convertPluginManifestToToolsCalling } from '@/utils/toolManifest';
+import { type MetaData } from '@/types/meta';
+import { type LobeToolMeta } from '@/types/tool/tool';
 
-import { pluginHelpers } from '../helpers';
-import { ToolStoreState } from '../initialState';
+import { type ToolStoreState } from '../initialState';
 import { builtinToolSelectors } from '../slices/builtin/selectors';
+import { lobehubSkillStoreSelectors } from '../slices/lobehubSkillStore/selectors';
 import { pluginSelectors } from '../slices/plugin/selectors';
 
-const enabledSchema =
-  (tools: string[] = []) =>
-  (s: ToolStoreState): ChatCompletionTool[] => {
-    const manifests = pluginSelectors
-      .installedPluginManifestList(s)
-      .concat(s.builtinTools.map((b) => b.manifest as LobeChatPluginManifest))
-      // 如果存在 enabledPlugins，那么只启用 enabledPlugins 中的插件
-      .filter((m) => tools.includes(m?.identifier));
+const metaList = (s: ToolStoreState): LobeToolMeta[] => {
+  const pluginList = pluginSelectors.installedPluginMetaList(s) as LobeToolMeta[];
+  const lobehubSkillList = lobehubSkillStoreSelectors.metaList(s) as LobeToolMeta[];
 
-    return convertPluginManifestToToolsCalling(manifests);
-  };
-
-const enabledSystemRoles =
-  (tools: string[] = []) =>
-  (s: ToolStoreState) => {
-    const toolsSystemRole = pluginSelectors
-      .installedPluginManifestList(s)
-      .concat(s.builtinTools.map((b) => b.manifest as LobeChatPluginManifest))
-      // 如果存在 enabledPlugins，那么只启用 enabledPlugins 中的插件
-      .filter((m) => m && tools.includes(m.identifier))
-      .map((manifest) => {
-        const meta = manifest.meta || {};
-
-        const title = pluginHelpers.getPluginTitle(meta) || manifest.identifier;
-        let systemRole = manifest.systemRole || pluginHelpers.getPluginDesc(meta);
-
-        // Use the global context manager to fill the template
-        if (systemRole) {
-          const context = globalAgentContextManager.getContext();
-
-          systemRole = hydrationPrompt(systemRole, context);
-        }
-
-        return {
-          apis: manifest.api.map((m) => ({
-            desc: m.description,
-            name: genToolCallingName(manifest.identifier, m.name, manifest.type),
-          })),
-          identifier: manifest.identifier,
-          name: title,
-          systemRole,
-        };
-      });
-
-    if (toolsSystemRole.length > 0) {
-      return pluginPrompts({ tools: toolsSystemRole });
-    }
-
-    return '';
-  };
-
-const metaList =
-  (showDalle?: boolean) =>
-  (s: ToolStoreState): LobeToolMeta[] => {
-    const pluginList = pluginSelectors.installedPluginMetaList(s) as LobeToolMeta[];
-
-    return builtinToolSelectors.metaList(showDalle)(s).concat(pluginList);
-  };
+  return builtinToolSelectors.metaList(s).concat(pluginList).concat(lobehubSkillList);
+};
 
 const getMetaById =
-  (id: string, showDalle: boolean = true) =>
-  (s: ToolStoreState): MetaData | undefined =>
-    metaList(showDalle)(s).find((m) => m.identifier === id)?.meta;
+  (id: string) =>
+  (s: ToolStoreState): MetaData | undefined => {
+    const item = metaList(s).find((m) => m.identifier === id);
+
+    if (!item) return;
+
+    if (item.meta) return item.meta;
+
+    return {
+      avatar: item?.avatar,
+      backgroundColor: item?.backgroundColor,
+      description: item?.description,
+      title: item?.title,
+    };
+  };
 
 const getManifestById =
   (id: string) =>
@@ -86,7 +41,7 @@ const getManifestById =
       .concat(s.builtinTools.map((b) => b.manifest as LobeChatPluginManifest))
       .find((i) => i.identifier === id);
 
-// 获取插件 manifest 加载状态
+// Get plugin manifest loading status
 const getManifestLoadingStatus = (id: string) => (s: ToolStoreState) => {
   const manifest = getManifestById(id)(s);
 
@@ -109,12 +64,29 @@ const isToolHasUI = (id: string) => (s: ToolStoreState) => {
   return !!manifest.ui;
 };
 
+/**
+ * Get the renderDisplayControl configuration for a specific tool API
+ * Only works for builtin tools, plugins don't support this feature yet
+ * @param identifier - Tool identifier
+ * @param apiName - API name
+ * @returns RenderDisplayControl value, defaults to 'collapsed'
+ */
+const getRenderDisplayControl =
+  (identifier: string, apiName: string) =>
+  (s: ToolStoreState): RenderDisplayControl => {
+    // Only builtin tools support renderDisplayControl
+    const builtinTool = s.builtinTools.find((t) => t.identifier === identifier);
+    if (!builtinTool) return 'collapsed';
+
+    const api = builtinTool.manifest.api.find((a) => a.name === apiName);
+    return api?.renderDisplayControl ?? 'collapsed';
+  };
+
 export const toolSelectors = {
-  enabledSchema,
-  enabledSystemRoles,
   getManifestById,
   getManifestLoadingStatus,
   getMetaById,
+  getRenderDisplayControl,
   isToolHasUI,
   metaList,
 };

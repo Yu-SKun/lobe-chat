@@ -1,5 +1,5 @@
 import { Button, Modal } from '@lobehub/ui';
-import { FormInstance } from 'antd';
+import { type FormInstance } from 'antd';
 import isEqual from 'fast-deep-equal';
 import { memo, use, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -59,6 +59,13 @@ const ModelConfigModal = memo<ModelConfigModalProps>(({ id, open, setOpen }) => 
       maskClosable
       onCancel={closeModal}
       open={open}
+      styles={{
+        body: {
+          display: 'flex',
+          flexDirection: 'column',
+          maxHeight: 'calc(100vh - 150px)',
+        },
+      }}
       title={t('llm.customModelCards.modelConfig.modalTitle', { ns: 'setting' })}
       zIndex={1251} // Select is 1150
     >

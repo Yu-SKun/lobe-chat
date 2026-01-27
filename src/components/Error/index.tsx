@@ -1,26 +1,20 @@
 'use client';
 
-import { Button, FluentEmoji } from '@lobehub/ui';
-import Link from 'next/link';
-import { memo, useLayoutEffect } from 'react';
+import { Button, Flexbox, FluentEmoji } from '@lobehub/ui';
+import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Flexbox } from 'react-layout-kit';
 
 import { MAX_WIDTH } from '@/const/layoutTokens';
 
-import { type ErrorType, sentryCaptureException } from './sentryCaptureException';
+export type ErrorType = Error & { digest?: string };
 
 interface ErrorCaptureProps {
   error: ErrorType;
   reset: () => void;
 }
 
-const ErrorCapture = memo<ErrorCaptureProps>(({ reset, error }) => {
+const ErrorCapture = memo<ErrorCaptureProps>(({ reset }) => {
   const { t } = useTranslation('error');
-
-  useLayoutEffect(() => {
-    sentryCaptureException(error);
-  }, [error]);
 
   return (
     <Flexbox align={'center'} justify={'center'} style={{ minHeight: '100%', width: '100%' }}>
@@ -44,9 +38,9 @@ const ErrorCapture = memo<ErrorCaptureProps>(({ reset, error }) => {
       <p style={{ marginBottom: '2em' }}>{t('error.desc')}</p>
       <Flexbox gap={12} horizontal style={{ marginBottom: '1em' }}>
         <Button onClick={() => reset()}>{t('error.retry')}</Button>
-        <Link href="/">
-          <Button type={'primary'}>{t('error.backHome')}</Button>
-        </Link>
+        <Button onClick={() => (window.location.href = '/')} type={'primary'}>
+          {t('error.backHome')}
+        </Button>
       </Flexbox>
     </Flexbox>
   );

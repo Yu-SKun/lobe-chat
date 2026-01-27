@@ -1,17 +1,17 @@
-import { LobeChatPluginManifest } from '@lobehub/chat-plugin-sdk';
+import { type LobeChatPluginManifest } from '@lobehub/chat-plugin-sdk';
+import { merge } from 'es-toolkit/compat';
 import { t } from 'i18next';
-import { merge } from 'lodash-es';
-import { StateCreator } from 'zustand/vanilla';
+import { type StateCreator } from 'zustand/vanilla';
 
 import { notification } from '@/components/AntdStaticMethods';
 import { mcpService } from '@/services/mcp';
 import { pluginService } from '@/services/plugin';
 import { toolService } from '@/services/tool';
 import { pluginHelpers } from '@/store/tool/helpers';
-import { LobeToolCustomPlugin, PluginInstallError } from '@/types/tool/plugin';
+import { type LobeToolCustomPlugin, type PluginInstallError } from '@/types/tool/plugin';
 import { setNamespace } from '@/utils/storeDebug';
 
-import { ToolStore } from '../../store';
+import { type ToolStore } from '../../store';
 import { pluginSelectors } from '../plugin/selectors';
 import { defaultCustomPlugin } from './initialState';
 
@@ -51,7 +51,16 @@ export const createCustomPluginSlice: StateCreator<
         const url = plugin.customParams?.mcp?.url;
         if (!url) return;
 
-        manifest = await mcpService.getStreamableMcpServerManifest(plugin.identifier, url);
+        manifest = await mcpService.getStreamableMcpServerManifest({
+          auth: plugin.customParams.mcp.auth,
+          headers: plugin.customParams.mcp.headers,
+          identifier: plugin.identifier,
+          metadata: {
+            avatar: plugin.customParams.avatar,
+            description: plugin.customParams.description,
+          },
+          url,
+        });
       } else {
         manifest = await toolService.getToolManifest(
           plugin.customParams?.manifestUrl,

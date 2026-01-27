@@ -4,9 +4,8 @@ import { withSWR } from '~test-utils';
 
 import { DEFAULT_PREFERENCE } from '@/const/user';
 import { userService } from '@/services/user';
-import { ClientService } from '@/services/user/_deprecated';
 import { useUserStore } from '@/store/user';
-import { preferenceSelectors } from '@/store/user/selectors';
+import { userGeneralSettingsSelectors } from '@/store/user/selectors';
 import { GlobalServerConfig } from '@/types/serverConfig';
 import { UserInitializationState, UserPreference } from '@/types/user';
 
@@ -31,9 +30,7 @@ describe('createCommonSlice', () => {
       const avatar = 'data:image/png;base64,';
 
       const spyOn = vi.spyOn(result.current, 'refreshUserState');
-      const updateAvatarSpy = vi
-        .spyOn(ClientService.prototype, 'updateAvatar')
-        .mockResolvedValue(undefined);
+      const updateAvatarSpy = vi.spyOn(userService, 'updateAvatar').mockResolvedValue({} as any);
 
       await act(async () => {
         await result.current.updateAvatar(avatar);
@@ -83,6 +80,7 @@ describe('createCommonSlice', () => {
         settings: {
           general: { fontSize: 14 },
         },
+        email: 'test@example.com',
       };
 
       vi.spyOn(userService, 'getUserState').mockResolvedValueOnce(mockUserState);
@@ -104,6 +102,7 @@ describe('createCommonSlice', () => {
       // 验证状态是否正确更新
       expect(useUserStore.getState().user?.avatar).toBe(mockUserState.avatar);
       expect(useUserStore.getState().settings).toEqual(mockUserState.settings);
+      expect(useUserStore.getState().user?.email).toEqual(mockUserState.email);
       expect(successCallback).toHaveBeenCalledWith(mockUserState);
     });
 
@@ -233,8 +232,8 @@ describe('createCommonSlice', () => {
       await waitFor(() => expect(result.current.data).toBeUndefined());
     });
 
-    it('should return false when userAllowTrace is already set', async () => {
-      vi.spyOn(preferenceSelectors, 'userAllowTrace').mockReturnValueOnce(true);
+    it('should return false when telemetry is already set', async () => {
+      vi.spyOn(userGeneralSettingsSelectors, 'telemetry').mockReturnValueOnce(true);
 
       const { result } = renderHook(() => useUserStore().useCheckTrace(true), {
         wrapper: withSWR,
@@ -244,7 +243,7 @@ describe('createCommonSlice', () => {
     });
 
     it('should call messageService.messageCountToCheckTrace when needed', async () => {
-      vi.spyOn(preferenceSelectors, 'userAllowTrace').mockReturnValueOnce(null);
+      vi.spyOn(userGeneralSettingsSelectors, 'telemetry').mockReturnValueOnce(undefined as any);
 
       act(() => {
         useUserStore.setState({

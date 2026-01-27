@@ -1,17 +1,17 @@
 'use client';
 
 import { ConfigProvider } from 'antd';
-import { useTheme } from 'antd-style';
 import dayjs from 'dayjs';
-import { PropsWithChildren, memo, useEffect, useState } from 'react';
+import { type PropsWithChildren, memo, useEffect, useState } from 'react';
 import { isRtlLang } from 'rtl-detect';
 
 import { createI18nNext } from '@/locales/create';
 import { isOnServerSide } from '@/utils/env';
 import { getAntdLocale } from '@/utils/locale';
 
+import Editor from './Editor';
+
 const updateDayjs = async (lang: string) => {
-  // load default lang
   let dayJSLocale;
   try {
     // dayjs locale is using `en` instead of `en-US`
@@ -33,25 +33,14 @@ interface LocaleLayoutProps extends PropsWithChildren {
 }
 
 const Locale = memo<LocaleLayoutProps>(({ children, defaultLang, antdLocale }) => {
-  const [i18n] = useState(createI18nNext(defaultLang));
+  const [i18n] = useState(() => createI18nNext(defaultLang));
   const [lang, setLang] = useState(defaultLang);
   const [locale, setLocale] = useState(antdLocale);
-  const theme = useTheme();
 
-  // if run on server side, init i18n instance everytime
   if (isOnServerSide) {
-    i18n.init();
-
-    // load the dayjs locale
-    // if (lang) {
-    //   const dayJSLocale = require(`dayjs/locale/${lang!.toLowerCase()}.js`);
-    //
-    //   dayjs.locale(dayJSLocale);
-    // }
+    i18n.init({ initAsync: false });
   } else {
-    // if on browser side, init i18n instance only once
     if (!i18n.instance.isInitialized)
-      // console.debug('locale', lang);
       i18n.init().then(async () => {
         if (!lang) return;
 
@@ -90,30 +79,10 @@ const Locale = memo<LocaleLayoutProps>(({ children, defaultLang, antdLocale }) =
           Button: {
             contentFontSizeSM: 12,
           },
-          DatePicker: {
-            activeBorderColor: theme.colorBorder,
-            hoverBorderColor: theme.colorBorder,
-          },
-          Input: {
-            activeBorderColor: theme.colorBorder,
-            hoverBorderColor: theme.colorBorder,
-          },
-          InputNumber: {
-            activeBorderColor: theme.colorBorder,
-            hoverBorderColor: theme.colorBorder,
-          },
-          Mentions: {
-            activeBorderColor: theme.colorBorder,
-            hoverBorderColor: theme.colorBorder,
-          },
-          Select: {
-            activeBorderColor: theme.colorBorder,
-            hoverBorderColor: theme.colorBorder,
-          },
         },
       }}
     >
-      {children}
+      <Editor>{children}</Editor>
     </ConfigProvider>
   );
 });

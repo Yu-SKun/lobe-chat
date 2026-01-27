@@ -1,16 +1,16 @@
 import isEqual from 'fast-deep-equal';
-import { SWRResponse, mutate } from 'swr';
-import { StateCreator } from 'zustand/vanilla';
-
-import { useClientDataSWR } from '@/libs/swr';
-import { aiModelService } from '@/services/aiModel';
-import { AiInfraStore } from '@/store/aiInfra/store';
 import {
-  AiModelSortMap,
-  AiProviderModelListItem,
-  CreateAiModelParams,
-  ToggleAiModelEnableParams,
-} from '@/types/aiModel';
+  type AiModelSortMap,
+  type AiProviderModelListItem,
+  type CreateAiModelParams,
+  type ToggleAiModelEnableParams,
+} from 'model-bank';
+import type { SWRResponse } from 'swr';
+import { type StateCreator } from 'zustand/vanilla';
+
+import { mutate, useClientDataSWR } from '@/libs/swr';
+import { aiModelService } from '@/services/aiModel';
+import { type AiInfraStore } from '@/store/aiInfra/store';
 
 const FETCH_AI_PROVIDER_MODEL_LIST_KEY = 'FETCH_AI_PROVIDER_MODELS';
 
@@ -79,12 +79,15 @@ export const createAiModelSlice: StateCreator<
           abilities: {
             files: model.files,
             functionCall: model.functionCall,
+            imageOutput: model.imageOutput,
             reasoning: model.reasoning,
+            search: model.search,
+            video: model.video,
             vision: model.vision,
           },
           enabled: model.enabled || false,
           source: 'remote',
-          type: 'chat',
+          type: model.type || 'chat',
         })),
       );
 

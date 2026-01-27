@@ -1,7 +1,7 @@
 'use client';
 
 import { Form, type FormGroupItemType, HotkeyInput, Icon } from '@lobehub/ui';
-import { Skeleton } from 'antd';
+import { Skeleton } from '@lobehub/ui';
 import isEqual from 'fast-deep-equal';
 import { Loader2Icon } from 'lucide-react';
 import { memo, useState } from 'react';
@@ -9,18 +9,10 @@ import { useTranslation } from 'react-i18next';
 
 import { HOTKEYS_REGISTRATION } from '@/const/hotkeys';
 import { FORM_STYLE } from '@/const/layoutTokens';
-import { isDesktop } from '@/const/version';
 import hotkeyMeta from '@/locales/default/hotkey';
 import { useUserStore } from '@/store/user';
 import { settingsSelectors } from '@/store/user/selectors';
-import { HotkeyGroupEnum, HotkeyItem } from '@/types/hotkey';
-
-const filterByDesktop = (item: HotkeyItem) => {
-  if (isDesktop) return true;
-
-  // is not desktop, filter out desktop only items
-  if (!isDesktop) return !item.isDesktop;
-};
+import { HotkeyGroupEnum, type HotkeyItem } from '@/types/hotkey';
 
 const HotkeySetting = memo(() => {
   const { t } = useTranslation(['setting', 'hotkey']);
@@ -47,29 +39,25 @@ const HotkeySetting = memo(() => {
           hotkeyConflicts={hotkeyConflicts}
           placeholder={t('hotkey.record')}
           resetValue={item.keys}
-          texts={{
-            conflicts: t('hotkey.conflicts'),
-            invalidCombination: t('hotkey.invalidCombination'),
-            reset: t('hotkey.reset'),
-          }}
         />
       ),
-      desc: hotkeyMeta[item.id].desc ? t(`${item.id}.desc`, { ns: 'hotkey' }) : undefined,
+      desc: hotkeyMeta[`${item.id}.desc`] ? t(`${item.id}.desc`, { ns: 'hotkey' }) : undefined,
       label: t(`${item.id}.title`, { ns: 'hotkey' }),
       name: item.id,
     };
   };
 
   const essential: FormGroupItemType = {
-    children: HOTKEYS_REGISTRATION.filter((item) => item.group === HotkeyGroupEnum.Essential)
-      .filter((item) => filterByDesktop(item))
-      .map((item) => mapHotkeyItem(item)),
+    children: HOTKEYS_REGISTRATION.filter((item) => item.group === HotkeyGroupEnum.Essential).map(
+      (item) => mapHotkeyItem(item),
+    ),
     extra: loading && <Icon icon={Loader2Icon} size={16} spin style={{ opacity: 0.5 }} />,
     title: t('hotkey.group.essential'),
   };
 
   return (
     <Form
+      collapsible={false}
       form={form}
       initialValues={hotkey}
       items={[essential]}
@@ -79,7 +67,7 @@ const HotkeySetting = memo(() => {
         await setSettings({ hotkey: values });
         setLoading(false);
       }}
-      variant={'borderless'}
+      variant={'filled'}
       {...FORM_STYLE}
     />
   );

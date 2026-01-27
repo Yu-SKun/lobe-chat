@@ -1,14 +1,15 @@
+import { LOBE_CHAT_CLOUD } from '@lobechat/business-const';
 import { t } from 'i18next';
 import { sha256 } from 'js-sha256';
-import { StateCreator } from 'zustand/vanilla';
+import { type StateCreator } from 'zustand/vanilla';
 
 import { message } from '@/components/AntdStaticMethods';
-import { LOBE_CHAT_CLOUD } from '@/const/branding';
 import { fileService } from '@/services/file';
 import { uploadService } from '@/services/upload';
-import { FileMetadata, UploadFileItem } from '@/types/files';
+import { type FileMetadata, type UploadFileItem } from '@/types/files';
+import { getImageDimensions } from '@/utils/client/imageDimensions';
 
-import { FileStore } from '../../store';
+import { type FileStore } from '../../store';
 
 type OnStatusUpdate = (
   data:
@@ -24,18 +25,28 @@ type OnStatusUpdate = (
 ) => void;
 
 interface UploadWithProgressParams {
+  abortController?: AbortController;
   file: File;
   knowledgeBaseId?: string;
   onStatusUpdate?: OnStatusUpdate;
+  parentId?: string;
   /**
    * Optional flag to indicate whether to skip the file type check.
    * When set to `true`, any file type checks will be bypassed.
    * Default is `false`, which means file type checks will be performed.
    */
   skipCheckFileType?: boolean;
+  /**
+   * Optional source identifier for the file (e.g., 'page-editor', 'image_generation')
+   */
+  source?: string;
 }
 
 interface UploadWithProgressResult {
+  dimensions?: {
+    height: number;
+    width: number;
+  };
   filename?: string;
   id: string;
   url: string;
@@ -61,6 +72,9 @@ export const createFileUploadSlice: StateCreator<
   FileUploadAction
 > = () => ({
   uploadBase64FileWithProgress: async (base64) => {
+    // Extract image dimensions from base64 data
+    const dimensions = await getImageDimensions(base64);
+
     const { metadata, fileType, size, hash } = await uploadService.uploadBase64ToS3(base64);
 
     const res = await fileService.createFile({
@@ -71,18 +85,29 @@ export const createFileUploadSlice: StateCreator<
       size: size,
       url: metadata.path,
     });
-    return { ...res, filename: metadata.filename };
+    return { ...res, dimensions, filename: metadata.filename };
   },
-  uploadWithProgress: async ({ file, onStatusUpdate, knowledgeBaseId, skipCheckFileType }) => {
+  uploadWithProgress: async ({
+    file,
+    onStatusUpdate,
+    knowledgeBaseId,
+    skipCheckFileType,
+    parentId,
+    source,
+    abortController,
+  }) => {
     const fileArrayBuffer = await file.arrayBuffer();
 
-    // 1. check file hash
+    // 1. extract image dimensions if applicable
+    const dimensions = await getImageDimensions(file);
+
+    // 2. check file hash
     const hash = sha256(fileArrayBuffer);
 
     const checkStatus = await fileService.checkFileHash(hash);
     let metadata: FileMetadata;
 
-    // 2. if file exist, just skip upload
+    // 3. if file exist, just skip upload
     if (checkStatus.isExist) {
       metadata = checkStatus.metadata as FileMetadata;
       onStatusUpdate?.({
@@ -91,9 +116,10 @@ export const createFileUploadSlice: StateCreator<
         value: { status: 'processing', uploadState: { progress: 100, restTime: 0, speed: 0 } },
       });
     }
-    // 2. if file don't exist, need upload files
+    // 3. if file don't exist, need upload files
     else {
       const { data, success } = await uploadService.uploadFileToS3(file, {
+        abortController,
         onNotSupported: () => {
           onStatusUpdate?.({ id: file.name, type: 'removeFile' });
           message.info({
@@ -119,7 +145,7 @@ export const createFileUploadSlice: StateCreator<
       metadata = data;
     }
 
-    // 3. use more powerful file type detector to get file type
+    // 4. use more powerful file type detector to get file type
     let fileType = file.type;
 
     if (!file.type) {
@@ -129,15 +155,17 @@ export const createFileUploadSlice: StateCreator<
       fileType = type?.mime || 'text/plain';
     }
 
-    // 4. create file to db
+    // 5. create file to db
     const data = await fileService.createFile(
       {
         fileType,
         hash,
         metadata,
         name: file.name,
+        parentId,
         size: file.size,
-        url: metadata.path,
+        source,
+        url: metadata.path || checkStatus.url,
       },
       knowledgeBaseId,
     );
@@ -153,6 +181,6 @@ export const createFileUploadSlice: StateCreator<
       },
     });
 
-    return { ...data, filename: file.name };
+    return { ...data, dimensions, filename: file.name };
   },
 });

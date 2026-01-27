@@ -1,10 +1,9 @@
-import { ActionIcon, Button, Dropdown } from '@lobehub/ui';
-import { App, Skeleton, Space, Typography } from 'antd';
-import { useTheme } from 'antd-style';
+import { ActionIcon, Button, DropdownMenu, Flexbox, Skeleton, Text } from '@lobehub/ui';
+import { App, Space } from 'antd';
+import { cssVar } from 'antd-style';
 import { CircleX, EllipsisVertical, LucideRefreshCcwDot, PlusIcon } from 'lucide-react';
 import { memo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Flexbox } from 'react-layout-kit';
 
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { useAiInfraStore } from '@/store/aiInfra';
@@ -21,7 +20,6 @@ interface ModelFetcherProps {
 
 const ModelTitle = memo<ModelFetcherProps>(
   ({ provider, showAddNewModel = true, showModelFetcher = true }) => {
-    const theme = useTheme();
     const { t } = useTranslation('modelProvider');
     const { modal, message } = App.useApp();
     const [
@@ -57,22 +55,24 @@ const ModelTitle = memo<ModelFetcherProps>(
         gap={12}
         paddingBlock={8}
         style={{
-          background: theme.colorBgContainer,
+          background: cssVar.colorBgContainer,
+          marginTop: mobile ? 0 : -12,
+          paddingTop: mobile ? 0 : 20,
           position: 'sticky',
-          top: mobile ? -2 : -16,
+          top: mobile ? -2 : -32,
           zIndex: 15,
         }}
       >
         <Flexbox align={'center'} gap={0} horizontal justify={'space-between'}>
           <Flexbox align={'center'} gap={8} horizontal>
-            <Typography.Text style={{ fontSize: 16, fontWeight: 'bold' }}>
+            <Text strong style={{ fontSize: 16 }}>
               {t('providerModels.list.title')}
-            </Typography.Text>
+            </Text>
 
             {isLoading ? (
               <Skeleton.Button active style={{ height: 22 }} />
             ) : (
-              <Typography.Text style={{ fontSize: 12 }} type={'secondary'}>
+              <Text style={{ fontSize: 12 }} type={'secondary'}>
                 <div style={{ display: 'flex', lineHeight: '24px' }}>
                   {t('providerModels.list.total', { count: totalModels })}
                   {hasRemoteModels && (
@@ -89,7 +89,7 @@ const ModelTitle = memo<ModelFetcherProps>(
                     />
                   )}
                 </div>
-              </Typography.Text>
+              </Text>
             )}
           </Flexbox>
           {isLoading ? (
@@ -137,28 +137,26 @@ const ModelTitle = memo<ModelFetcherProps>(
                     <CreateNewModelModal open={showModal} setOpen={setShowModal} />
                   </>
                 )}
-                <Dropdown
-                  menu={{
-                    items: [
-                      {
-                        key: 'reset',
-                        label: t('providerModels.list.resetAll.title'),
-                        onClick: async () => {
-                          modal.confirm({
-                            content: t('providerModels.list.resetAll.conform'),
-                            onOk: async () => {
-                              await clearModelsByProvider(provider);
-                              message.success(t('providerModels.list.resetAll.success'));
-                            },
-                            title: t('providerModels.list.resetAll.title'),
-                          });
-                        },
+                <DropdownMenu
+                  items={[
+                    {
+                      key: 'reset',
+                      label: t('providerModels.list.resetAll.title'),
+                      onClick: async () => {
+                        modal.confirm({
+                          content: t('providerModels.list.resetAll.conform'),
+                          onOk: async () => {
+                            await clearModelsByProvider(provider);
+                            message.success(t('providerModels.list.resetAll.success'));
+                          },
+                          title: t('providerModels.list.resetAll.title'),
+                        });
                       },
-                    ],
-                  }}
+                    },
+                  ]}
                 >
                   <Button icon={EllipsisVertical} size={'small'} />
-                </Dropdown>
+                </DropdownMenu>
               </Space.Compact>
             </Flexbox>
           )}

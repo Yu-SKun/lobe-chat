@@ -1,8 +1,9 @@
+import { getUserAuth } from '@lobechat/utils/server';
 import debug from 'debug';
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, NextResponse } from 'next/server';
 
+import { appEnv } from '@/envs/app';
 import { OIDCService } from '@/server/services/oidc';
-import { getUserAuth } from '@/utils/server/auth';
 
 const log = debug('lobe-oidc:consent');
 
@@ -113,20 +114,23 @@ export async function POST(request: NextRequest) {
     const internalRedirectUrlString = await oidcService.getInteractionResult(uid, result);
     log('OIDC Provider internal redirect URL string: %s', internalRedirectUrlString);
 
-    // // Construct the handoff URL
-    // const handoffUrl = new URL('/oauth/handoff', request.nextUrl.origin);
-    // // Set the original redirect URL as the 'target' query parameter (URL encoded)
-    // handoffUrl.searchParams.set('target', internalRedirectUrlString);
-    //
-    // log('Redirecting to handoff page: %s', handoffUrl.toString());
-    // // Redirect to the handoff page
-    // return NextResponse.redirect(handoffUrl.toString(), {
-    //   headers: request.headers, // Keep original headers if necessary
-    //   status: 303,
-    // });
+    // 直接使用 APP_URL 作为基础
+    if (appEnv.APP_URL) {
+      const baseUrl = new URL(appEnv.APP_URL);
+      const internalUrl = new URL(internalRedirectUrlString);
+      baseUrl.pathname = internalUrl.pathname;
+      baseUrl.search = internalUrl.search;
+      baseUrl.hash = internalUrl.hash;
+      const finalRedirectUrl = baseUrl;
+      log('Using APP_URL as base for redirect: %s', finalRedirectUrl.toString());
+      return NextResponse.redirect(finalRedirectUrl, {
+        status: 303,
+      });
+    }
 
-    return NextResponse.redirect(internalRedirectUrlString, {
-      headers: request.headers,
+    // 后备方案：使用原始内部URL
+    log('Using internal redirect URL directly: %s', internalRedirectUrlString);
+    return NextResponse.redirect(new URL(internalRedirectUrlString), {
       status: 303,
     });
   } catch (error) {

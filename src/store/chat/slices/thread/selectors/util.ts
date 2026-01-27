@@ -1,10 +1,15 @@
-import { ChatMessage } from '@/types/message';
-import { ThreadType } from '@/types/topic';
+import { type IThreadType, ThreadType, type UIChatMessage } from '@lobechat/types';
 
-export const genMessage = (
-  messages: ChatMessage[],
-  startMessageId: string | undefined,
-  threadMode?: ThreadType,
+/**
+ * Generate parent messages for thread display
+ * Based on thread type:
+ * - Standalone: only include the source message
+ * - Continuation: include all messages up to and including the source message
+ */
+export const genParentMessages = (
+  messages: UIChatMessage[],
+  startMessageId: string | null | undefined,
+  threadMode?: IThreadType,
 ) => {
   if (!startMessageId) return [];
 

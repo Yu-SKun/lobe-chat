@@ -1,5 +1,7 @@
 'use client';
 
+import { ENABLE_BUSINESS_FEATURES } from '@lobechat/business-const';
+import { AES_GCM_URL, BASE_PROVIDER_DOC_URL, FORM_STYLE, isDesktop } from '@lobechat/const';
 import { ProviderCombine } from '@lobehub/icons';
 import {
   Avatar,
@@ -9,35 +11,33 @@ import {
   Icon,
   Tooltip,
 } from '@lobehub/ui';
+import { Center, Flexbox, Skeleton } from '@lobehub/ui';
 import { useDebounceFn } from 'ahooks';
-import { Skeleton, Switch } from 'antd';
-import { createStyles } from 'antd-style';
+import { Form as AntdForm, Switch } from 'antd';
+import { createStaticStyles, cssVar, cx, responsive } from 'antd-style';
 import { Loader2Icon, LockIcon } from 'lucide-react';
-import Link from 'next/link';
-import { ReactNode, memo, useLayoutEffect } from 'react';
+import { type ReactNode, memo, useCallback, useLayoutEffect, useRef } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
-import { Center, Flexbox } from 'react-layout-kit';
 import urlJoin from 'url-join';
 import { z } from 'zod';
 
 import { FormInput, FormPassword } from '@/components/FormInput';
-import { FORM_STYLE } from '@/const/layoutTokens';
-import { AES_GCM_URL, BASE_PROVIDER_DOC_URL } from '@/const/url';
-import { isDesktop, isServerMode } from '@/const/version';
+import { SkeletonInput, SkeletonSwitch } from '@/components/Skeleton';
 import { aiProviderSelectors, useAiInfraStore } from '@/store/aiInfra';
 import {
-  AiProviderDetailItem,
+  type AiProviderDetailItem,
   AiProviderSourceEnum,
-  AiProviderSourceType,
+  type AiProviderSourceType,
 } from '@/types/aiProvider';
 
 import { KeyVaultsConfigKey, LLMProviderApiTokenKey, LLMProviderBaseUrlKey } from '../../const';
-import Checker, { CheckErrorRender } from './Checker';
+import Checker, { type CheckErrorRender } from './Checker';
 import EnableSwitch from './EnableSwitch';
-import { SkeletonInput } from './SkeletonInput';
 import UpdateProviderInfo from './UpdateProviderInfo';
 
-const useStyles = createStyles(({ css, prefixCls, responsive, token }) => ({
+const prefixCls = 'ant';
+
+const styles = createStaticStyles(({ css, cssVar }) => ({
   aceGcm: css`
     padding-block: 0 !important;
     .${prefixCls}-form-item-label {
@@ -47,12 +47,12 @@ const useStyles = createStyles(({ css, prefixCls, responsive, token }) => ({
       width: 100%;
 
       font-size: 12px;
-      color: ${token.colorTextSecondary};
+      color: ${cssVar.colorTextSecondary};
       text-align: center;
 
       opacity: 0.66;
 
-      transition: opacity 0.2s ${token.motionEaseInOut};
+      transition: opacity 0.2s ${cssVar.motionEaseInOut};
 
       &:hover {
         opacity: 1;
@@ -62,10 +62,8 @@ const useStyles = createStyles(({ css, prefixCls, responsive, token }) => ({
   form: css`
     .${prefixCls}-form-item-control:has(.${prefixCls}-input,.${prefixCls}-select) {
       flex: none;
-      width: min(70%, 800px);
-      min-width: min(70%, 800px) !important;
     }
-    ${responsive.mobile} {
+    ${responsive.sm} {
       width: 100%;
       min-width: unset !important;
     }
@@ -78,13 +76,13 @@ const useStyles = createStyles(({ css, prefixCls, responsive, token }) => ({
 
     font-size: 12px;
     font-weight: 500;
-    color: ${token.colorTextDescription};
+    color: ${cssVar.colorTextDescription};
 
-    background: ${token.colorFillTertiary};
+    background: ${cssVar.colorFillTertiary};
 
     &:hover {
-      color: ${token.colorText};
-      background: ${token.colorFill};
+      color: ${cssVar.colorText};
+      background: ${cssVar.colorFill};
     }
   `,
   switchLoading: css`
@@ -97,6 +95,7 @@ const useStyles = createStyles(({ css, prefixCls, responsive, token }) => ({
 
 export interface ProviderConfigProps extends Omit<AiProviderDetailItem, 'enabled' | 'source'> {
   apiKeyItems?: FormItemProps[];
+  apiKeyUrl?: string;
   canDeactivate?: boolean;
   checkErrorRender?: CheckErrorRender;
   className?: string;
@@ -123,10 +122,13 @@ const ProviderConfig = memo<ProviderConfigProps>(
     logo,
     className,
     checkErrorRender,
+    canDeactivate = true,
     name,
     showAceGcm = true,
     extra,
     source = AiProviderSourceEnum.Builtin,
+    apiKeyUrl,
+    title,
   }) => {
     const {
       proxyUrl,
@@ -134,41 +136,102 @@ const ProviderConfig = memo<ProviderConfigProps>(
       defaultShowBrowserRequest,
       disableBrowserRequest,
       showChecker = true,
+      supportResponsesApi,
     } = settings || {};
     const { t } = useTranslation('modelProvider');
     const [form] = Form.useForm();
-    const { cx, styles, theme } = useStyles();
 
     const [
-      useFetchAiProviderItem,
+      data,
       updateAiProviderConfig,
       enabled,
       isLoading,
       configUpdating,
-      isFetchOnClient,
-      isProviderEndpointNotEmpty,
-      isProviderApiKeyNotEmpty,
+      providerRuntimeConfig,
     ] = useAiInfraStore((s) => [
-      s.useFetchAiProviderItem,
+      aiProviderSelectors.providerDetailById(id)(s),
       s.updateAiProviderConfig,
       aiProviderSelectors.isProviderEnabled(id)(s),
       aiProviderSelectors.isAiProviderConfigLoading(id)(s),
       aiProviderSelectors.isProviderConfigUpdating(id)(s),
-      aiProviderSelectors.isProviderFetchOnClient(id)(s),
-      aiProviderSelectors.isActiveProviderEndpointNotEmpty(s),
-      aiProviderSelectors.isActiveProviderApiKeyNotEmpty(s),
+      aiProviderSelectors.providerConfigById(id)(s),
     ]);
 
-    const { data } = useFetchAiProviderItem(id);
+    // Watch form values in real-time to show/hide switches immediately
+    // Watch nested form values for endpoints
+    const formBaseURL = AntdForm.useWatch(['keyVaults', 'baseURL'], form);
+    const formEndpoint = AntdForm.useWatch(['keyVaults', 'endpoint'], form);
+    // Watch all possible credential fields for different providers
+    const formApiKey = AntdForm.useWatch(['keyVaults', 'apiKey'], form);
+    const formAccessKeyId = AntdForm.useWatch(['keyVaults', 'accessKeyId'], form);
+    const formSecretAccessKey = AntdForm.useWatch(['keyVaults', 'secretAccessKey'], form);
+    const formUsername = AntdForm.useWatch(['keyVaults', 'username'], form);
+    const formPassword = AntdForm.useWatch(['keyVaults', 'password'], form);
+
+    // Check if provider has endpoint and apiKey based on runtime config
+    // Fallback to data.keyVaults if runtime config is not yet loaded
+    const keyVaults = providerRuntimeConfig?.keyVaults || data?.keyVaults;
+    // Use form values first (for immediate update), fallback to stored values
+    const isProviderEndpointNotEmpty =
+      !!formBaseURL || !!formEndpoint || !!keyVaults?.baseURL || !!keyVaults?.endpoint;
+    // Check if any credential is present for different authentication types:
+    // - Standard apiKey (OpenAI, Azure, Cloudflare, VertexAI, etc.)
+    // - AWS Bedrock credentials (accessKeyId, secretAccessKey)
+    // - ComfyUI basic auth (username and password)
+    const isProviderApiKeyNotEmpty = !!(
+      formApiKey ||
+      keyVaults?.apiKey ||
+      formAccessKeyId ||
+      keyVaults?.accessKeyId ||
+      formSecretAccessKey ||
+      keyVaults?.secretAccessKey ||
+      (formUsername && formPassword) ||
+      (keyVaults?.username && keyVaults?.password)
+    );
+
+    // Track the last initialized provider ID to avoid resetting form during edits
+    const lastInitializedIdRef = useRef<string | null>(null);
 
     useLayoutEffect(() => {
       if (isLoading) return;
 
-      // set the first time
-      form.setFieldsValue(data);
-    }, [isLoading, id, data]);
+      // Only initialize form when:
+      // 1. First load (lastInitializedIdRef.current === null)
+      // 2. Provider ID changed (switching between providers)
+      const shouldInitialize = lastInitializedIdRef.current !== id;
+      if (!shouldInitialize) return;
 
-    const { run: debouncedUpdate } = useDebounceFn(updateAiProviderConfig, { wait: 500 });
+      // Merge data from both sources to ensure all fields are initialized correctly
+      // data: contains basic info like apiKey, baseURL, fetchOnClient
+      // providerRuntimeConfig: contains nested config like enableResponseApi
+      const mergedData = {
+        ...data,
+        ...(providerRuntimeConfig?.config && { config: providerRuntimeConfig.config }),
+      };
+
+      // Set form values and mark as initialized
+      form.setFieldsValue(mergedData);
+      lastInitializedIdRef.current = id;
+    }, [isLoading, id, data, providerRuntimeConfig, form]);
+
+    // 标记是否正在进行连接测试
+    const isCheckingConnection = useRef(false);
+
+    const handleValueChange = useCallback(
+      (...params: Parameters<typeof updateAiProviderConfig>) => {
+        // 虽然 debouncedHandleValueChange 早于 onBeforeCheck 执行，
+        // 但是由于 debouncedHandleValueChange 因为 debounce 的原因，本来就会晚 500ms 执行
+        // 所以 isCheckingConnection.current 这时候已经更新了
+        // 测试链接时已经出发一次了 updateAiProviderConfig ， 不应该重复更新
+        if (isCheckingConnection.current) return;
+
+        updateAiProviderConfig(...params);
+      },
+      [updateAiProviderConfig],
+    );
+    const { run: debouncedHandleValueChange } = useDebounceFn(handleValueChange, {
+      wait: 500,
+    });
 
     const isCustom = source === AiProviderSourceEnum.Custom;
 
@@ -181,15 +244,29 @@ const ProviderConfig = memo<ProviderConfigProps>(
             ) : (
               <FormPassword
                 autoComplete={'new-password'}
-                placeholder={t(`providerModels.config.apiKey.placeholder`, { name })}
+                placeholder={t('providerModels.config.apiKey.placeholder', { name })}
                 suffix={
                   configUpdating && (
-                    <Icon icon={Loader2Icon} spin style={{ color: theme.colorTextTertiary }} />
+                    <Icon icon={Loader2Icon} spin style={{ color: cssVar.colorTextTertiary }} />
                   )
                 }
               />
             ),
-            desc: t(`providerModels.config.apiKey.desc`, { name }),
+            desc: apiKeyUrl ? (
+              <Trans
+                components={[
+                  <span key="0" />,
+                  <span key="1" />,
+                  <span key="2" />,
+                  <a href={apiKeyUrl} key="3" rel="noreferrer" target="_blank" />,
+                ]}
+                i18nKey="providerModels.config.apiKey.descWithUrl"
+                ns={'modelProvider'}
+                values={{ name }}
+              />
+            ) : (
+              t(`providerModels.config.apiKey.desc`, { name })
+            ),
             label: t(`providerModels.config.apiKey.title`),
             name: [KeyVaultsConfigKey, LLMProviderApiTokenKey],
           },
@@ -199,13 +276,20 @@ const ProviderConfig = memo<ProviderConfigProps>(
       children: (
         <>
           <Icon icon={LockIcon} style={{ marginRight: 4 }} />
-          <Trans i18nKey="providerModels.config.aesGcm" ns={'modelProvider'}>
-            您的秘钥与代理地址等将使用
-            <Link href={AES_GCM_URL} style={{ marginInline: 4 }} target={'_blank'}>
-              AES-GCM
-            </Link>
-            加密算法进行加密
-          </Trans>
+          <Trans
+            components={[
+              <span key="0" />,
+              <a
+                href={AES_GCM_URL}
+                key="1"
+                rel="noreferrer"
+                style={{ marginInline: 4 }}
+                target="_blank"
+              />,
+            ]}
+            i18nKey="providerModels.config.aesGcm"
+            ns={'modelProvider'}
+          />
         </>
       ),
       className: styles.aceGcm,
@@ -227,7 +311,7 @@ const ProviderConfig = memo<ProviderConfigProps>(
               }
               suffix={
                 configUpdating && (
-                  <Icon icon={Loader2Icon} spin style={{ color: theme.colorTextTertiary }} />
+                  <Icon icon={Loader2Icon} spin style={{ color: cssVar.colorTextTertiary }} />
                 )
               }
             />
@@ -263,21 +347,29 @@ const ProviderConfig = memo<ProviderConfigProps>(
       (defaultShowBrowserRequest ||
         (showEndpoint && isProviderEndpointNotEmpty) ||
         (showApiKey && isProviderApiKeyNotEmpty));
-    const clientFetchItem = showClientFetch && {
-      children: isLoading ? (
-        <Skeleton.Button active className={styles.switchLoading} />
-      ) : (
-        <Switch checked={isFetchOnClient} disabled={configUpdating} />
-      ),
-      desc: t('providerModels.config.fetchOnClient.desc'),
-      label: t('providerModels.config.fetchOnClient.title'),
-      minWidth: undefined,
-      name: 'fetchOnClient',
-    };
+
+    const clientFetchItem = showClientFetch
+      ? {
+          children: isLoading ? <SkeletonSwitch /> : <Switch loading={configUpdating} />,
+          desc: t('providerModels.config.fetchOnClient.desc'),
+          label: t('providerModels.config.fetchOnClient.title'),
+          minWidth: undefined,
+          name: 'fetchOnClient',
+        }
+      : undefined;
 
     const configItems = [
       ...apiKeyItem,
       endpointItem,
+      supportResponsesApi
+        ? {
+            children: isLoading ? <Skeleton.Button active /> : <Switch loading={configUpdating} />,
+            desc: t('providerModels.config.responsesApi.desc'),
+            label: t('providerModels.config.responsesApi.title'),
+            minWidth: undefined,
+            name: ['config', 'enableResponseApi'],
+          }
+        : undefined,
       clientFetchItem,
       showChecker
         ? {
@@ -287,15 +379,24 @@ const ProviderConfig = memo<ProviderConfigProps>(
               <Checker
                 checkErrorRender={checkErrorRender}
                 model={data?.checkModel || checkModel!}
+                onAfterCheck={async () => {
+                  // 重置连接测试状态，允许后续的 onValuesChange 更新
+                  isCheckingConnection.current = false;
+                }}
+                onBeforeCheck={async () => {
+                  // 设置连接测试状态，阻止 onValuesChange 的重复请求
+                  isCheckingConnection.current = true;
+                  // 主动保存表单最新值，确保 fetchAiProviderRuntimeState 获取最新数据
+                  await updateAiProviderConfig(id, form.getFieldsValue());
+                }}
                 provider={id}
               />
             ),
             desc: t('providerModels.config.checker.desc'),
             label: t('providerModels.config.checker.title'),
-            minWidth: undefined,
           }
         : undefined,
-      showAceGcm && isServerMode && aceGcmItem,
+      showAceGcm && aceGcmItem,
     ].filter(Boolean) as FormItemProps[];
 
     const logoUrl = data?.logo ?? logo;
@@ -309,7 +410,9 @@ const ProviderConfig = memo<ProviderConfigProps>(
           {extra}
 
           {isCustom && <UpdateProviderInfo />}
-          <EnableSwitch id={id} />
+          {canDeactivate && !(ENABLE_BUSINESS_FEATURES && id === 'lobehub') && (
+            <EnableSwitch id={id} key={id} />
+          )}
         </Flexbox>
       ),
       title: (
@@ -334,17 +437,18 @@ const ProviderConfig = memo<ProviderConfigProps>(
             </Flexbox>
           ) : (
             <>
-              <ProviderCombine provider={id} size={24} />
+              {title ?? <ProviderCombine provider={id} size={24} />}
               <Tooltip title={t('providerModels.config.helpDoc')}>
-                <Link
+                <a
                   href={urlJoin(BASE_PROVIDER_DOC_URL, id)}
                   onClick={(e) => e.stopPropagation()}
-                  target={'_blank'}
+                  rel="noreferrer"
+                  target="_blank"
                 >
                   <Center className={styles.help} height={20} width={20}>
                     ?
                   </Center>
-                </Link>
+                </a>
               </Tooltip>
             </>
           )}
@@ -358,7 +462,7 @@ const ProviderConfig = memo<ProviderConfigProps>(
         form={form}
         items={[model]}
         onValuesChange={(_, values) => {
-          debouncedUpdate(id, values);
+          debouncedHandleValueChange(id, values);
         }}
         variant={'borderless'}
         {...FORM_STYLE}
@@ -368,5 +472,3 @@ const ProviderConfig = memo<ProviderConfigProps>(
 );
 
 export default ProviderConfig;
-
-export { SkeletonInput } from './SkeletonInput';

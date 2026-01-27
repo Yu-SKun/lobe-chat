@@ -1,13 +1,12 @@
 // @vitest-environment node
+import { EdgeConfig } from '@lobechat/edge-config';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
-import { EdgeConfig } from '@/server/modules/EdgeConfig';
 
 import { AssistantStore } from './index';
 
 const baseURL = 'https://registry.npmmirror.com/@lobehub/agents-index/v1/files/public';
 
-vi.mock('@/server/modules/EdgeConfig', () => {
+vi.mock('@lobechat/edge-config', () => {
   const EdgeConfigMock = vi.fn();
   // @ts-expect-error: static mock for isEnabled
   EdgeConfigMock.isEnabled = vi.fn();
@@ -32,7 +31,7 @@ describe('AssistantStore', () => {
   it('should return the index URL for a not supported language', () => {
     const agentMarket = new AssistantStore();
     const url = agentMarket['getAgentIndexUrl']('xxx' as any);
-    expect(url).toBe('https://registry.npmmirror.com/@lobehub/agents-index/v1/files/public');
+    expect(url).toBe(baseURL);
   });
 
   it('should return the zh-CN URL for zh locale', () => {
@@ -75,7 +74,7 @@ describe('AssistantStore', () => {
     global.fetch = vi.fn().mockRejectedValue(new Error('fetch failed'));
     const store = new AssistantStore();
     const result = await store.getAgentIndex();
-    expect(result).toEqual({ agents: [], schemaVersion: 1 });
+    expect(result).toEqual([]);
   });
 
   it('should handle fetch error and return empty agents with schema version when error.ok is false', async () => {
@@ -85,7 +84,7 @@ describe('AssistantStore', () => {
     });
     const store = new AssistantStore();
     const result = await store.getAgentIndex();
-    expect(result).toEqual({ agents: [], schemaVersion: 1 });
+    expect(result).toEqual([]);
   });
 
   it('should filter agents by whitelist when EdgeConfig is enabled', async () => {
@@ -101,6 +100,7 @@ describe('AssistantStore', () => {
       ok: true,
       status: 200,
       json: () => Promise.resolve({ ...mockAgents }),
+      clone: () => ({ json: () => Promise.resolve({ ...mockAgents }) }),
     });
 
     // @ts-expect-error
@@ -114,8 +114,8 @@ describe('AssistantStore', () => {
 
     const result = await store.getAgentIndex();
 
-    expect(result.agents).toHaveLength(1);
-    expect(result.agents[0].identifier).toBe('agent1');
+    expect(result).toHaveLength(1);
+    expect(result[0].identifier).toBe('agent1');
   });
 
   it('should filter agents by blacklist when EdgeConfig is enabled and no whitelist', async () => {
@@ -131,6 +131,7 @@ describe('AssistantStore', () => {
       ok: true,
       status: 200,
       json: () => Promise.resolve({ ...mockAgents }),
+      clone: () => ({ json: () => Promise.resolve({ ...mockAgents }) }),
     });
 
     // @ts-expect-error
@@ -144,8 +145,8 @@ describe('AssistantStore', () => {
 
     const result = await store.getAgentIndex();
 
-    expect(result.agents).toHaveLength(1);
-    expect(result.agents[0].identifier).toBe('agent1');
+    expect(result).toHaveLength(1);
+    expect(result[0].identifier).toBe('agent1');
   });
 
   it('should fallback to default language if fetch returns 404', async () => {
@@ -167,6 +168,7 @@ describe('AssistantStore', () => {
         status: 200,
         ok: true,
         json: () => Promise.resolve({ ...mockAgents }),
+        clone: () => ({ json: () => Promise.resolve({ ...mockAgents }) }),
       });
 
     global.fetch = fetchMock as any;
@@ -176,7 +178,9 @@ describe('AssistantStore', () => {
 
     const store = new AssistantStore();
     const result = await store.getAgentIndex('zh-CN');
-    expect(result).toEqual(mockAgents);
+    expect(result).toEqual([
+      { identifier: 'agent1', meta: {}, author: '', createAt: '', createdAt: '', homepage: '' },
+    ]);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 

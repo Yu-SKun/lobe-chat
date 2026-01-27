@@ -1,8 +1,7 @@
-import { useRouter } from 'next/navigation';
+import { isOnServerSide } from '@lobechat/utils';
 import qs, { type ParsedQuery } from 'query-string';
 import { useMemo } from 'react';
-
-import { isOnServerSide } from '@/utils/env';
+import { useNavigate } from 'react-router-dom';
 
 interface QueryRouteOptions {
   hash?: string;
@@ -18,7 +17,10 @@ interface GenHrefOptions extends QueryRouteOptions {
 }
 
 const genHref = ({ hash, replace, url, prevQuery = {}, query = {} }: GenHrefOptions): string => {
-  let href = qs.stringifyUrl({ query: replace ? query : { ...prevQuery, ...query }, url });
+  let href = qs.stringifyUrl(
+    { query: replace ? query : { ...prevQuery, ...query }, url },
+    { skipNull: true },
+  );
 
   if (!isOnServerSide && hash) {
     href = [href, hash || location?.hash?.slice(1)].filter(Boolean).join('#');
@@ -28,20 +30,19 @@ const genHref = ({ hash, replace, url, prevQuery = {}, query = {} }: GenHrefOpti
 };
 
 export const useQueryRoute = () => {
-  const router = useRouter();
+  const navigate = useNavigate();
 
   return useMemo(
     () => ({
       push: (url: string, options: QueryRouteOptions = {}) => {
         const prevQuery = qs.parse(window.location.search);
-
-        return router.push(genHref({ prevQuery, url, ...options }));
+        return navigate(genHref({ prevQuery, url, ...options }));
       },
       replace: (url: string, options: QueryRouteOptions = {}) => {
         const prevQuery = qs.parse(window.location.search);
-        return router.replace(genHref({ prevQuery, url, ...options }));
+        return navigate(genHref({ prevQuery, url, ...options }), { replace: true });
       },
     }),
-    [],
+    [navigate],
   );
 };

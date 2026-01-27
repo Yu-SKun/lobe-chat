@@ -1,6 +1,5 @@
-import { ReactNode } from 'react';
+import { type ReactNode } from 'react';
 
 export interface LayoutProps {
-  category: ReactNode;
-  children: ReactNode;
+  children?: ReactNode;
 }

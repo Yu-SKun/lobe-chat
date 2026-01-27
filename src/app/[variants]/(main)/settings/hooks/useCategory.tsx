@@ -1,143 +1,236 @@
-import { Icon, Tag } from '@lobehub/ui';
+import { ENABLE_BUSINESS_FEATURES } from '@lobechat/business-const';
+import { isDesktop } from '@lobechat/const';
+import { Avatar } from '@lobehub/ui';
 import {
-  Bot,
+  Blocks,
   Brain,
-  Cloudy,
+  BrainCircuit,
+  ChartColumnBigIcon,
+  Coins,
+  CreditCard,
   Database,
+  EthernetPort,
+  Gift,
+  Image as ImageIcon,
   Info,
+  KeyIcon,
   KeyboardIcon,
+  Map,
+  MessageSquareTextIcon,
   Mic2,
-  Settings2,
+  PaletteIcon,
+  PieChart,
   Sparkles,
+  UserCircle,
 } from 'lucide-react';
-import Link from 'next/link';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Flexbox } from 'react-layout-kit';
 
-import type { MenuProps } from '@/components/Menu';
-import { isDeprecatedEdition } from '@/const/version';
+import { useElectronStore } from '@/store/electron';
+import { electronSyncSelectors } from '@/store/electron/selectors';
 import { SettingsTabs } from '@/store/global/initialState';
 import { featureFlagsSelectors, useServerConfigStore } from '@/store/serverConfig';
+import { useUserStore } from '@/store/user';
+import { userProfileSelectors } from '@/store/user/slices/auth/selectors';
+
+export enum SettingsGroupKey {
+  AIConfig = 'ai-config',
+  Account = 'account',
+  Profile = 'profile',
+  Subscription = 'subscription',
+  System = 'system',
+}
+
+export interface CategoryItem {
+  icon: any;
+  key: SettingsTabs;
+  label: string;
+}
+
+export interface CategoryGroup {
+  items: CategoryItem[];
+  key: SettingsGroupKey;
+  title: string;
+}
 
 export const useCategory = () => {
   const { t } = useTranslation('setting');
+  const { t: tAuth } = useTranslation('auth');
+  const { t: tSubscription } = useTranslation('subscription');
   const mobile = useServerConfigStore((s) => s.isMobile);
-  const { enableWebrtc, showLLM, enableSTT, hideDocs } =
+  const { enableSTT, hideDocs, showAiImage, showApiKeyManage } =
     useServerConfigStore(featureFlagsSelectors);
+  const [avatar, username] = useUserStore((s) => [
+    userProfileSelectors.userAvatar(s),
+    userProfileSelectors.nickName(s),
+  ]);
+  const remoteServerUrl = useElectronStore(electronSyncSelectors.remoteServerUrl);
 
-  const cateItems: MenuProps['items'] = useMemo(
-    () =>
-      [
-        {
-          icon: <Icon icon={Settings2} />,
-          key: SettingsTabs.Common,
-          label: (
-            <Link href={'/settings/common'} onClick={(e) => e.preventDefault()}>
-              {t('tab.common')}
-            </Link>
-          ),
-        },
-        {
-          icon: <Icon icon={Bot} />,
-          key: SettingsTabs.Agent,
-          label: (
-            <Link href={'/settings/agent'} onClick={(e) => e.preventDefault()}>
-              {t('tab.agent')}
-            </Link>
-          ),
-        },
-        // TODO: remove in V2
-        enableWebrtc && {
-          icon: <Icon icon={Cloudy} />,
-          key: SettingsTabs.Sync,
-          label: (
-            <Link href={'/settings/sync'} onClick={(e) => e.preventDefault()}>
-              <Flexbox align={'center'} gap={8} horizontal>
-                {t('tab.sync')}
-                <Tag bordered={false} color={'warning'}>
-                  {t('tab.experiment')}
-                </Tag>
-              </Flexbox>
-            </Link>
-          ),
-        },
-        !mobile && {
-          icon: <Icon icon={KeyboardIcon} />,
-          key: SettingsTabs.Hotkey,
-          label: (
-            <Link href={'/settings/hotkey'} onClick={(e) => e.preventDefault()}>
-              {t('tab.hotkey')}
-            </Link>
-          ),
-        },
-        {
-          type: 'divider',
-        },
-        showLLM &&
-          // TODO: Remove /llm when v2.0
-          (isDeprecatedEdition
-            ? {
-                icon: <Icon icon={Brain} />,
-                key: SettingsTabs.LLM,
-                label: (
-                  <Link href={'/settings/llm'} onClick={(e) => e.preventDefault()}>
-                    {t('tab.llm')}
-                  </Link>
-                ),
-              }
-            : {
-                icon: <Icon icon={Brain} />,
-                key: SettingsTabs.Provider,
-                label: (
-                  <Link href={'/settings/provider'} onClick={(e) => e.preventDefault()}>
-                    {t('tab.provider')}
-                  </Link>
-                ),
-              }),
+  // Process avatar URL for desktop environment
+  const avatarUrl = useMemo(() => {
+    if (!avatar) return undefined;
+    if (isDesktop && avatar.startsWith('/') && remoteServerUrl) {
+      return remoteServerUrl + avatar;
+    }
+    return avatar;
+  }, [avatar, remoteServerUrl]);
 
-        enableSTT && {
-          icon: <Icon icon={Mic2} />,
-          key: SettingsTabs.TTS,
-          label: (
-            <Link href={'/settings/tts'} onClick={(e) => e.preventDefault()}>
-              {t('tab.tts')}
-            </Link>
-          ),
-        },
-        {
-          icon: <Icon icon={Sparkles} />,
-          key: SettingsTabs.SystemAgent,
-          label: (
-            <Link href={'/settings/system-agent'} onClick={(e) => e.preventDefault()}>
-              {t('tab.system-agent')}
-            </Link>
-          ),
-        },
-        {
-          type: 'divider',
-        },
-        {
-          icon: <Icon icon={Database} />,
-          key: SettingsTabs.Storage,
-          label: (
-            <Link href={'/settings/storage'} onClick={(e) => e.preventDefault()}>
-              {t('tab.storage')}
-            </Link>
-          ),
-        },
-        !hideDocs && {
-          icon: <Icon icon={Info} />,
-          key: SettingsTabs.About,
-          label: (
-            <Link href={'/settings/about'} onClick={(e) => e.preventDefault()}>
-              {t('tab.about')}
-            </Link>
-          ),
-        },
-      ].filter(Boolean) as MenuProps['items'],
-    [t, enableWebrtc, showLLM],
-  );
+  const categoryGroups: CategoryGroup[] = useMemo(() => {
+    const groups: CategoryGroup[] = [];
 
-  return cateItems;
+    // 个人资料组 - Profile 相关设置
+    const profileItems: CategoryItem[] = [
+      {
+        icon: avatarUrl ? <Avatar avatar={avatarUrl} shape={'square'} size={26} /> : UserCircle,
+        key: SettingsTabs.Profile,
+        label: username ? username : tAuth('tab.profile'),
+      },
+      {
+        icon: ChartColumnBigIcon,
+        key: SettingsTabs.Stats,
+        label: tAuth('tab.stats'),
+      },
+      showApiKeyManage && {
+        icon: KeyIcon,
+        key: SettingsTabs.APIKey,
+        label: tAuth('tab.apikey'),
+      },
+    ].filter(Boolean) as CategoryItem[];
+
+    groups.push({
+      items: profileItems,
+      key: SettingsGroupKey.Profile,
+      title: t('group.profile'),
+    });
+
+    const subscriptionItems: CategoryItem[] = [
+      {
+        icon: Map,
+        key: SettingsTabs.Plans,
+        label: tSubscription('tab.plans'),
+      },
+      {
+        icon: Coins,
+        key: SettingsTabs.Funds,
+        label: tSubscription('tab.funds'),
+      },
+      {
+        icon: PieChart,
+        key: SettingsTabs.Usage,
+        label: tSubscription('tab.usage'),
+      },
+      {
+        icon: CreditCard,
+        key: SettingsTabs.Billing,
+        label: tSubscription('tab.billing'),
+      },
+      {
+        icon: Gift,
+        key: SettingsTabs.Referral,
+        label: tSubscription('tab.referral'),
+      },
+    ];
+
+    if (ENABLE_BUSINESS_FEATURES) {
+      groups.push({
+        items: subscriptionItems,
+        key: SettingsGroupKey.Subscription,
+        title: t('group.subscription'),
+      });
+    }
+
+    // 账号组 - 个人相关设置
+    const commonItems: CategoryItem[] = [
+      {
+        icon: PaletteIcon,
+        key: SettingsTabs.Common,
+        label: t('tab.common'),
+      },
+      {
+        icon: MessageSquareTextIcon,
+        key: SettingsTabs.ChatAppearance,
+        label: t('tab.chatAppearance'),
+      },
+      !mobile && {
+        icon: KeyboardIcon,
+        key: SettingsTabs.Hotkey,
+        label: t('tab.hotkey'),
+      },
+    ].filter(Boolean) as CategoryItem[];
+
+    groups.push({
+      items: commonItems,
+      key: SettingsGroupKey.Account,
+      title: t('group.common'),
+    });
+
+    // AI 配置组 - AI 相关设置
+    const aiConfigItems: CategoryItem[] = [
+      {
+        icon: Brain,
+        key: SettingsTabs.Provider,
+        label: t('tab.provider'),
+      },
+      {
+        icon: Sparkles,
+        key: SettingsTabs.Agent,
+        label: t('tab.agent'),
+      },
+      {
+        icon: Blocks,
+        key: SettingsTabs.Skill,
+        label: t('tab.skill'),
+      },
+      {
+        icon: BrainCircuit,
+        key: SettingsTabs.Memory,
+        label: t('tab.memory'),
+      },
+      showAiImage && {
+        icon: ImageIcon,
+        key: SettingsTabs.Image,
+        label: t('tab.image'),
+      },
+      enableSTT && {
+        icon: Mic2,
+        key: SettingsTabs.TTS,
+        label: t('tab.tts'),
+      },
+    ].filter(Boolean) as CategoryItem[];
+
+    groups.push({
+      items: aiConfigItems,
+      key: SettingsGroupKey.AIConfig,
+      title: t('group.aiConfig'),
+    });
+
+    // 系统组 - 系统相关设置
+    const systemItems: CategoryItem[] = [
+      isDesktop && {
+        icon: EthernetPort,
+        key: SettingsTabs.Proxy,
+        label: t('tab.proxy'),
+      },
+      {
+        icon: Database,
+        key: SettingsTabs.Storage,
+        label: t('tab.storage'),
+      },
+      !hideDocs && {
+        icon: Info,
+        key: SettingsTabs.About,
+        label: t('tab.about'),
+      },
+    ].filter(Boolean) as CategoryItem[];
+
+    groups.push({
+      items: systemItems,
+      key: SettingsGroupKey.System,
+      title: t('group.system'),
+    });
+
+    return groups;
+  }, [t, tAuth, enableSTT, hideDocs, mobile, showAiImage, showApiKeyManage, avatarUrl, username]);
+
+  return categoryGroups;
 };

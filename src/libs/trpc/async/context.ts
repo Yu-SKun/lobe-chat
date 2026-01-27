@@ -1,11 +1,15 @@
-import { NextRequest } from 'next/server';
+import { type LobeChatDatabase } from '@lobechat/database';
+import debug from 'debug';
+import { type NextRequest } from 'next/server';
 
-import { JWTPayload, LOBE_CHAT_AUTH_HEADER } from '@/const/auth';
+import { LOBE_CHAT_AUTH_HEADER } from '@/envs/auth';
 import { KeyVaultsGateKeeper } from '@/server/modules/KeyVaultsEncrypt';
 
+const log = debug('lobe-async:context');
+
 export interface AsyncAuthContext {
-  jwtPayload: JWTPayload;
-  secret: string;
+  authorizationToken?: string;
+  serverDB?: LobeChatDatabase;
   userId?: string | null;
 }
 
@@ -14,12 +18,10 @@ export interface AsyncAuthContext {
  * This is useful for testing when we don't want to mock Next.js' request/response
  */
 export const createAsyncContextInner = async (params?: {
-  jwtPayload?: JWTPayload;
-  secret?: string;
+  authorizationToken?: string;
   userId?: string | null;
 }): Promise<AsyncAuthContext> => ({
-  jwtPayload: params?.jwtPayload || {},
-  secret: params?.secret || '',
+  authorizationToken: params?.authorizationToken,
   userId: params?.userId,
 });
 
@@ -28,13 +30,39 @@ export type AsyncContext = Awaited<ReturnType<typeof createAsyncContextInner>>;
 export const createAsyncRouteContext = async (request: NextRequest): Promise<AsyncContext> => {
   // for API-response caching see https://trpc.io/docs/v11/caching
 
+  log('Creating async route context');
+
   const authorization = request.headers.get('Authorization');
   const lobeChatAuthorization = request.headers.get(LOBE_CHAT_AUTH_HEADER);
 
-  const secret = authorization?.split(' ')[1];
-  const gateKeeper = await KeyVaultsGateKeeper.initWithEnvKey();
-  const { plaintext } = await gateKeeper.decrypt(lobeChatAuthorization || '');
+  log('Authorization header present: %s', !!authorization);
+  log('LobeChat auth header present: %s', !!lobeChatAuthorization);
 
-  const { userId, payload } = JSON.parse(plaintext);
-  return createAsyncContextInner({ jwtPayload: payload, secret, userId });
+  if (!authorization) {
+    log('No authorization header found');
+    throw new Error('No authorization header found');
+  }
+
+  if (!lobeChatAuthorization) {
+    log('No LobeChat authorization header found');
+    throw new Error('No LobeChat authorization header found');
+  }
+
+  try {
+    log('Initializing KeyVaultsGateKeeper');
+    const gateKeeper = await KeyVaultsGateKeeper.initWithEnvKey();
+
+    log('Decrypting LobeChat authorization');
+    const { plaintext } = await gateKeeper.decrypt(lobeChatAuthorization);
+
+    log('Parsing decrypted authorization data');
+    const { userId } = JSON.parse(plaintext);
+
+    log('Successfully parsed authorization data - userId: %s', userId);
+
+    return createAsyncContextInner({ authorizationToken: authorization, userId });
+  } catch (error) {
+    log('Error creating async route context: %O', error);
+    throw error;
+  }
 };

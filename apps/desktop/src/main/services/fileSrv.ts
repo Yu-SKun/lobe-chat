@@ -1,14 +1,27 @@
 import { DeleteFilesResponse } from '@lobechat/electron-server-ipc';
 import * as fs from 'node:fs';
 import { writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import path, { join } from 'node:path';
 import { promisify } from 'node:util';
 
-import { FILE_STORAGE_DIR } from '@/const/dir';
+import { FILE_STORAGE_DIR, LOCAL_STORAGE_URL_PREFIX } from '@/const/dir';
 import { makeSureDirExist } from '@/utils/file-system';
 import { createLogger } from '@/utils/logger';
 
 import { ServiceModule } from './index';
+
+/**
+ * File not found error class
+ */
+export class FileNotFoundError extends Error {
+  constructor(
+    message: string,
+    public path: string,
+  ) {
+    super(message);
+    this.name = 'FileNotFoundError';
+  }
+}
 
 const readFilePromise = promisify(fs.readFile);
 const unlinkPromise = promisify(fs.unlink);
@@ -17,14 +30,14 @@ const unlinkPromise = promisify(fs.unlink);
 const logger = createLogger('services:FileService');
 
 interface UploadFileParams {
-  content: ArrayBuffer;
+  content: ArrayBuffer | string; // ArrayBuffer from browser or Base64 string from server
   filename: string;
   hash: string;
   path: string;
   type: string;
 }
 
-interface FileMetadata {
+export interface FileMetadata {
   date: string;
   dirname: string;
   filename: string;
@@ -32,51 +45,63 @@ interface FileMetadata {
 }
 
 export default class FileService extends ServiceModule {
+  /**
+   * Get legacy upload directory path
+   * @deprecated Only for backward compatibility with legacy file access, new files should be stored under custom paths in FILE_STORAGE_DIR
+   */
   get UPLOADS_DIR() {
     return join(this.app.appStoragePath, FILE_STORAGE_DIR, 'uploads');
   }
 
   constructor(app) {
     super(app);
-
-    // Initialize file storage directory
-    logger.info('Initializing file storage directory');
-    makeSureDirExist(this.UPLOADS_DIR);
-    logger.debug(`Upload directory created: ${this.UPLOADS_DIR}`);
   }
 
   /**
-   * 上传文件到本地存储
+   * Upload file to local storage
    */
   async uploadFile({
     content,
     filename,
     hash,
+    path: filePath,
     type,
   }: UploadFileParams): Promise<{ metadata: FileMetadata; success: boolean }> {
-    logger.info(`Starting to upload file: ${filename}, hash: ${hash}`);
+    logger.info(`Starting to upload file: ${filename}, hash: ${hash}, path: ${filePath}`);
     try {
-      // 创建时间戳目录
-      const date = (Date.now() / 1000 / 60 / 60).toFixed(0);
-      const dirname = join(this.UPLOADS_DIR, date);
-      logger.debug(`Creating timestamp directory: ${dirname}`);
-      makeSureDirExist(dirname);
+      // Get current timestamp, avoid repeated Date.now() calls
+      const now = Date.now();
+      const date = (now / 1000 / 60 / 60).toFixed(0);
 
-      // 生成文件保存路径
-      const fileExt = filename.split('.').pop() || '';
-      const savedFilename = `${hash}${fileExt ? `.${fileExt}` : ''}`;
-      const savedPath = join(dirname, savedFilename);
-      logger.debug(`Generated file save path: ${savedPath}`);
+      // Use provided filePath as the file storage path
+      const fullStoragePath = join(this.app.appStoragePath, FILE_STORAGE_DIR, filePath);
+      logger.debug(`Target file storage path: ${fullStoragePath}`);
 
-      // 写入文件内容
-      const buffer = Buffer.from(content);
-      logger.debug(`Writing file content, size: ${buffer.length} bytes`);
+      // Ensure target directory exists
+      const targetDir = path.dirname(fullStoragePath);
+      logger.debug(`Ensuring target directory exists: ${targetDir}`);
+      makeSureDirExist(targetDir);
+
+      const savedPath = fullStoragePath;
+      logger.debug(`Final file save path: ${savedPath}`);
+
+      // Create Buffer based on content type
+      let buffer: Buffer;
+      if (typeof content === 'string') {
+        // Base64 string from server
+        buffer = Buffer.from(content, 'base64');
+        logger.debug(`Creating buffer from Base64 string, size: ${buffer.length} bytes`);
+      } else {
+        // ArrayBuffer from browser
+        buffer = Buffer.from(content);
+        logger.debug(`Creating buffer from ArrayBuffer, size: ${buffer.length} bytes`);
+      }
       await writeFile(savedPath, buffer);
 
-      // 写入元数据文件
+      // Write metadata file
       const metaFilePath = `${savedPath}.meta`;
       const metadata = {
-        createdAt: Date.now(),
+        createdAt: now, // Use unified timestamp
         filename,
         hash,
         size: buffer.length,
@@ -85,14 +110,19 @@ export default class FileService extends ServiceModule {
       logger.debug(`Writing metadata file: ${metaFilePath}`);
       await writeFile(metaFilePath, JSON.stringify(metadata, null, 2));
 
-      // 返回与S3兼容的元数据格式
-      const desktopPath = `desktop://${date}/${savedFilename}`;
+      // Return S3-compatible metadata format
+      const desktopPath = `desktop://${filePath}`;
       logger.info(`File upload successful: ${desktopPath}`);
+
+      // Extract filename and directory information from path
+      const parsedPath = path.parse(filePath);
+      const dirname = parsedPath.dir || '';
+      const savedFilename = parsedPath.base;
 
       return {
         metadata: {
-          date,
-          dirname: date,
+          date, // Keep timestamp format for compatibility and time tracking
+          dirname,
           filename: savedFilename,
           path: desktopPath,
         },
@@ -105,7 +135,25 @@ export default class FileService extends ServiceModule {
   }
 
   /**
-   * 获取文件内容
+   * Check if path is in legacy format (timestamp directory)
+   *
+   * Legacy path format: {timestamp}/{hash}.{ext} (e.g., 1234567890/abc123.png)
+   * New path format: arbitrary custom paths (e.g., user_uploads/images/photo.png, ai_generations/image.jpg)
+   *
+   * @param path - Relative path, without desktop:// prefix
+   * @returns true if legacy format, false if new format
+   */
+  private isLegacyPath(path: string): boolean {
+    const parts = path.split('/');
+    if (parts.length < 2) return false;
+
+    // If the first part is purely numeric (timestamp), consider it legacy format
+    // Timestamp format: Unix timestamp accurate to the hour, typically 10 digits
+    return /^\d+$/.test(parts[0]);
+  }
+
+  /**
+   * Get file content
    */
   async getFile(path: string): Promise<{ content: ArrayBuffer; mimeType: string }> {
     logger.info(`Getting file content: ${path}`);
@@ -116,24 +164,60 @@ export default class FileService extends ServiceModule {
         throw new Error(`Invalid desktop file path: ${path}`);
       }
 
-      // 标准化路径格式
-      // 可能收到的格式: desktop:/12345/file.png 或 desktop://12345/file.png
+      // Normalize path format
+      // Possible formats received: desktop:/12345/file.png or desktop://12345/file.png
       const normalizedPath = path.replace(/^desktop:\/+/, 'desktop://');
       logger.debug(`Normalized path: ${normalizedPath}`);
 
-      // 解析路径
+      // Parse path
       const relativePath = normalizedPath.replace('desktop://', '');
-      const filePath = join(this.UPLOADS_DIR, relativePath);
-      logger.debug(`Reading file from path: ${filePath}`);
 
-      // 读取文件内容
+      // Smart routing: decide which directory to read file from based on path format
+      let filePath: string;
+      let isLegacyAttempt = false;
+
+      if (this.isLegacyPath(relativePath)) {
+        // Legacy path: read from uploads directory (backward compatibility)
+        filePath = join(this.UPLOADS_DIR, relativePath);
+        isLegacyAttempt = true;
+        logger.debug(`Legacy path detected, reading from uploads directory: ${filePath}`);
+      } else {
+        // New path: read from FILE_STORAGE_DIR root directory
+        filePath = join(this.app.appStoragePath, FILE_STORAGE_DIR, relativePath);
+        logger.debug(`New path format, reading from storage root: ${filePath}`);
+      }
+
+      // Read file content, if first attempt fails and is legacy path, try new path
       logger.debug(`Starting to read file content`);
-      const content = await readFilePromise(filePath);
-      logger.debug(`File content read complete, size: ${content.length} bytes`);
+      let content: Buffer;
+      try {
+        content = await readFilePromise(filePath);
+        logger.debug(`File content read complete, size: ${content.length} bytes`);
+      } catch (firstError) {
+        if (isLegacyAttempt) {
+          // If legacy path read fails, try reading from new path
+          const fallbackPath = join(this.app.appStoragePath, FILE_STORAGE_DIR, relativePath);
+          logger.debug(
+            `Legacy path read failed, attempting fallback to storage root: ${fallbackPath}`,
+          );
+          try {
+            content = await readFilePromise(fallbackPath);
+            filePath = fallbackPath; // Update filePath for subsequent metadata reading
+            logger.debug(`Fallback read successful, size: ${content.length} bytes`);
+          } catch (fallbackError) {
+            logger.error(
+              `Both legacy and fallback paths failed. Legacy error: ${(firstError as Error).message}, Fallback error: ${(fallbackError as Error).message}`,
+            );
+            throw firstError; // 抛出原始错误
+          }
+        } else {
+          throw firstError;
+        }
+      }
 
-      // 读取元数据获取MIME类型
+      // Read metadata to get MIME type
       const metaFilePath = `${filePath}.meta`;
-      let mimeType = 'application/octet-stream'; // 默认MIME类型
+      let mimeType = 'application/octet-stream'; // Default MIME type
       logger.debug(`Attempting to read metadata file: ${metaFilePath}`);
 
       try {
@@ -142,8 +226,10 @@ export default class FileService extends ServiceModule {
         mimeType = metadata.type || mimeType;
         logger.debug(`Got MIME type from metadata: ${mimeType}`);
       } catch (metaError) {
-        logger.warn(`Failed to read metadata file: ${(metaError as Error).message}, using default MIME type`);
-        // 如果元数据文件不存在，尝试从文件扩展名猜测MIME类型
+        logger.warn(
+          `Failed to read metadata file: ${(metaError as Error).message}, using default MIME type`,
+        );
+        // If metadata file doesn't exist, try to guess MIME type from file extension
         const ext = path.split('.').pop()?.toLowerCase();
         if (ext) {
           if (['jpg', 'jpeg'].includes(ext)) mimeType = 'image/jpeg';
@@ -184,12 +270,18 @@ export default class FileService extends ServiceModule {
       };
     } catch (error) {
       logger.error(`File retrieval failed:`, error);
+
+      // If file not found error, throw custom FileNotFoundError
+      if (error instanceof Error && error.message.includes('ENOENT')) {
+        throw new FileNotFoundError(`File not found: ${path}`, path);
+      }
+
       throw new Error(`File retrieval failed: ${(error as Error).message}`);
     }
   }
 
   /**
-   * 删除文件
+   * Delete file
    */
   async deleteFile(path: string): Promise<{ success: boolean }> {
     logger.info(`Deleting file: ${path}`);
@@ -200,17 +292,55 @@ export default class FileService extends ServiceModule {
         throw new Error(`Invalid desktop file path: ${path}`);
       }
 
-      // 解析路径
-      const relativePath = path.replace('desktop://', '');
-      const filePath = join(this.UPLOADS_DIR, relativePath);
-      logger.debug(`File deletion path: ${filePath}`);
+      // Normalize path format
+      const normalizedPath = path.replace(/^desktop:\/+/, 'desktop://');
 
-      // 删除文件及其元数据
+      // Parse path
+      const relativePath = normalizedPath.replace('desktop://', '');
+
+      // Smart routing: decide which directory to delete file from based on path format
+      let filePath: string;
+      let isLegacyAttempt = false;
+
+      if (this.isLegacyPath(relativePath)) {
+        // Legacy path: delete from uploads directory (backward compatibility)
+        filePath = join(this.UPLOADS_DIR, relativePath);
+        isLegacyAttempt = true;
+        logger.debug(`Legacy path detected, deleting from uploads directory: ${filePath}`);
+      } else {
+        // New path: delete from FILE_STORAGE_DIR root directory
+        filePath = join(this.app.appStoragePath, FILE_STORAGE_DIR, relativePath);
+        logger.debug(`New path format, deleting from storage root: ${filePath}`);
+      }
+
+      // Delete file and its metadata, if first attempt fails and is legacy path, try new path
       logger.debug(`Starting file deletion`);
-      await unlinkPromise(filePath);
-      logger.debug(`File deletion successful`);
+      try {
+        await unlinkPromise(filePath);
+        logger.debug(`File deletion successful`);
+      } catch (firstError) {
+        if (isLegacyAttempt) {
+          // If legacy path deletion fails, try deleting from new path
+          const fallbackPath = join(this.app.appStoragePath, FILE_STORAGE_DIR, relativePath);
+          logger.debug(
+            `Legacy path deletion failed, attempting fallback to storage root: ${fallbackPath}`,
+          );
+          try {
+            await unlinkPromise(fallbackPath);
+            filePath = fallbackPath; // Update filePath for subsequent metadata deletion
+            logger.debug(`Fallback deletion successful`);
+          } catch (fallbackError) {
+            logger.error(
+              `Both legacy and fallback deletion failed. Legacy error: ${(firstError as Error).message}, Fallback error: ${(fallbackError as Error).message}`,
+            );
+            throw firstError; // 抛出原始错误
+          }
+        } else {
+          throw firstError;
+        }
+      }
 
-      // 尝试删除元数据文件，但不强制要求存在
+      // Try to delete metadata file, but don't require it to exist
       try {
         logger.debug(`Attempting to delete metadata file`);
         await unlinkPromise(`${filePath}.meta`);
@@ -228,13 +358,13 @@ export default class FileService extends ServiceModule {
   }
 
   /**
-   * 批量删除文件
+   * Batch delete files
    */
   async deleteFiles(paths: string[]): Promise<DeleteFilesResponse> {
     logger.info(`Batch deleting files, count: ${paths.length}`);
     const errors: { message: string; path: string }[] = [];
 
-    // 并行处理所有删除请求
+    // Process all deletion requests in parallel
     logger.debug(`Starting parallel deletion requests`);
     const results = await Promise.allSettled(
       paths.map(async (path) => {
@@ -252,7 +382,7 @@ export default class FileService extends ServiceModule {
       }),
     );
 
-    // 处理结果
+    // Process results
     logger.debug(`Processing batch deletion results`);
     results.forEach((result) => {
       if (result.status === 'rejected') {
@@ -270,7 +400,9 @@ export default class FileService extends ServiceModule {
     });
 
     const success = errors.length === 0;
-    logger.info(`Batch deletion operation complete, success: ${success}, error count: ${errors.length}`);
+    logger.info(
+      `Batch deletion operation complete, success: ${success}, error count: ${errors.length}`,
+    );
     return {
       success,
       ...(errors.length > 0 && { errors }),
@@ -279,16 +411,71 @@ export default class FileService extends ServiceModule {
 
   async getFilePath(path: string): Promise<string> {
     logger.debug(`Getting filesystem path: ${path}`);
-    // 处理desktop://路径
+    // Handle desktop:// paths
     if (!path.startsWith('desktop://')) {
       logger.error(`Invalid desktop file path: ${path}`);
       throw new Error(`Invalid desktop file path: ${path}`);
     }
 
-    // 解析路径
-    const relativePath = path.replace('desktop://', '');
-    const fullPath = join(this.UPLOADS_DIR, relativePath);
-    logger.debug(`Resolved filesystem path: ${fullPath}`);
+    // Normalize path format
+    const normalizedPath = path.replace(/^desktop:\/+/, 'desktop://');
+
+    // Parse path
+    const relativePath = normalizedPath.replace('desktop://', '');
+
+    // Smart routing: decide which directory to get file path from based on path format
+    let fullPath: string;
+    if (this.isLegacyPath(relativePath)) {
+      // Legacy path: get from uploads directory (backward compatibility)
+      fullPath = join(this.UPLOADS_DIR, relativePath);
+      logger.debug(`Legacy path detected, resolved to uploads directory: ${fullPath}`);
+
+      // Check if file exists, if not try new path
+      try {
+        await fs.promises.access(fullPath, fs.constants.F_OK);
+        logger.debug(`Legacy path file exists: ${fullPath}`);
+      } catch {
+        // If legacy path file doesn't exist, try new path
+        const fallbackPath = join(this.app.appStoragePath, FILE_STORAGE_DIR, relativePath);
+        logger.debug(`Legacy path file not found, trying fallback path: ${fallbackPath}`);
+        try {
+          await fs.promises.access(fallbackPath, fs.constants.F_OK);
+          fullPath = fallbackPath;
+          logger.debug(`Fallback path file exists: ${fullPath}`);
+        } catch {
+          // Neither path exists, return original legacy path (maintain existing behavior)
+          logger.debug(
+            `Neither legacy nor fallback path exists, returning legacy path: ${fullPath}`,
+          );
+        }
+      }
+    } else {
+      // New path: get from FILE_STORAGE_DIR root directory
+      fullPath = join(this.app.appStoragePath, FILE_STORAGE_DIR, relativePath);
+      logger.debug(`New path format, resolved to storage root: ${fullPath}`);
+    }
+
     return fullPath;
+  }
+
+  async getFileHTTPURL(path: string): Promise<string> {
+    logger.debug(`Getting file HTTP URL: ${path}`);
+    // Handle desktop:// paths
+    if (!path.startsWith('desktop://')) {
+      logger.error(`Invalid desktop file path: ${path}`);
+      throw new Error(`Invalid desktop file path: ${path}`);
+    }
+
+    // Normalize path format
+    const normalizedPath = path.replace(/^desktop:\/+/, 'desktop://');
+
+    // Parse path: extract path/to/file.png from desktop://path/to/file.png
+    const relativePath = normalizedPath.replace('desktop://', '');
+
+    // Use StaticFileServerManager to get file server domain, then construct full URL
+    const serverDomain = this.app.staticFileServerManager.getFileServerDomain();
+    const httpURL = `${serverDomain}${LOCAL_STORAGE_URL_PREFIX}/${relativePath}`;
+    logger.debug(`Generated HTTP URL: ${httpURL}`);
+    return httpURL;
   }
 }

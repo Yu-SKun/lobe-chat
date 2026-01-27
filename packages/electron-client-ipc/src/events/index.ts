@@ -1,44 +1,30 @@
-import { LocalFilesDispatchEvents } from './localFile';
-import { MenuDispatchEvents } from './menu';
-import { RemoteServerBroadcastEvents, RemoteServerDispatchEvents } from './remoteServer';
-import { ShortcutDispatchEvents } from './shortcut';
-import { SystemDispatchEvents } from './system';
-import { TrayDispatchEvents } from './tray';
-import { AutoUpdateBroadcastEvents, AutoUpdateDispatchEvents } from './update';
-import { UploadFilesDispatchEvents } from './upload';
-import { WindowsDispatchEvents } from './windows';
-
-/**
- * renderer -> main dispatch events
- */
-// eslint-disable-next-line @typescript-eslint/no-empty-interface
-export interface ClientDispatchEvents
-  extends WindowsDispatchEvents,
-    SystemDispatchEvents,
-    MenuDispatchEvents,
-    LocalFilesDispatchEvents,
-    AutoUpdateDispatchEvents,
-    ShortcutDispatchEvents,
-    RemoteServerDispatchEvents,
-    UploadFilesDispatchEvents,
-    TrayDispatchEvents {}
-
-export type ClientDispatchEventKey = keyof ClientDispatchEvents;
-
-export type ClientEventReturnType<T extends ClientDispatchEventKey> = ReturnType<
-  ClientDispatchEvents[T]
->;
+import { NavigationBroadcastEvents } from './navigation';
+import { ProtocolBroadcastEvents } from './protocol';
+import { RemoteServerBroadcastEvents } from './remoteServer';
+import { SystemBroadcastEvents } from './system';
+import { AutoUpdateBroadcastEvents } from './update';
 
 /**
  * main -> render broadcast events
  */
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 export interface MainBroadcastEvents
-  extends AutoUpdateBroadcastEvents,
-    RemoteServerBroadcastEvents {}
+  extends
+    AutoUpdateBroadcastEvents,
+    NavigationBroadcastEvents,
+    RemoteServerBroadcastEvents,
+    SystemBroadcastEvents,
+    ProtocolBroadcastEvents {}
 
 export type MainBroadcastEventKey = keyof MainBroadcastEvents;
 
 export type MainBroadcastParams<T extends MainBroadcastEventKey> = Parameters<
   MainBroadcastEvents[T]
 >[0];
+
+export type {
+  AuthorizationPhase,
+  AuthorizationProgress,
+  MarketAuthorizationParams,
+} from './remoteServer';
+export type { OpenSettingsWindowOptions } from './windows';

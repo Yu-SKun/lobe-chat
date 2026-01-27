@@ -1,34 +1,17 @@
-'use client';
-
-import { Form } from '@lobehub/ui';
-import { Divider } from 'antd';
-import { createStyles } from 'antd-style';
-import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Flexbox } from 'react-layout-kit';
 
-import { BRANDING_NAME } from '@/const/branding';
+import SettingHeader from '@/app/[variants]/(main)/settings/features/SettingHeader';
 
-
-import { useServerConfigStore } from '@/store/serverConfig';
-import { serverConfigSelectors } from '@/store/serverConfig/selectors';
-
+import About from './features/About';
 import Analytics from './features/Analytics';
+import Divider from '@/components/Cell/Divider';
+import { styles } from '@/components/FormAction';
+import { BRANDING_NAME } from '@/const/branding';
+import Form from '@/features/DevPanel/FeatureFlagViewer/Form';
 import Version from './features/Version';
 
-const useStyles = createStyles(({ css, token }) => ({
-  title: css`
-    font-size: 14px;
-    font-weight: bold;
-    color: ${token.colorTextSecondary};
-  `,
-}));
-
-const Page = memo<{ mobile?: boolean }>(({ mobile }) => {
-  const { t } = useTranslation('common');
-  const { styles } = useStyles();
-  const enabledTelemetryChat = useServerConfigStore(serverConfigSelectors.enabledTelemetryChat);
-
+const Page = ({ mobile }: { mobile?: boolean }) => {
+  const { t } = useTranslation('setting');
   return (
     <>
       <Form.Group
@@ -122,8 +105,6 @@ const Page = memo<{ mobile?: boolean }>(({ mobile }) => {
       {enabledTelemetryChat && <Analytics />}
     </>
   );
-});
-
-Page.displayName = 'AboutSetting';
+};
 
 export default Page;

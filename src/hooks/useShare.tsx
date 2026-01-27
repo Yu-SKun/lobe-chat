@@ -1,5 +1,4 @@
 import {
-  SiLinkedin,
   SiMastodon,
   SiReddit,
   SiSinaweibo,
@@ -7,7 +6,7 @@ import {
   SiWhatsapp,
   SiX,
 } from '@icons-pack/react-simple-icons';
-import { camelCase, identity, pickBy } from 'lodash-es';
+import { camelCase, identity, pickBy } from 'es-toolkit/compat';
 import qs from 'query-string';
 
 const stringifyHashtags = (hashtags: string[], joinfix: string = ',', prefix?: string) => {
@@ -154,7 +153,6 @@ export const useShare = ({
 
   return {
     linkedin: {
-      icon: SiLinkedin,
       link: genLinkdinLink(),
       title: 'Linkedin',
     },

@@ -1,4 +1,4 @@
-import { SearchParams, UniformSearchResponse } from '@/types/tool/search';
+import { type SearchParams, type UniformSearchResponse } from '@lobechat/types';
 
 /**
  * Search service implementation interface
